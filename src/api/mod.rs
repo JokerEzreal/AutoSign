@@ -97,6 +97,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/me/sync", post(me::sync))
         .route("/api/me/records", get(me::records))
         .route("/api/me/transactions", get(me::transactions))
+        .route("/api/venues", get(me::venues))
         // 管理员
         .route("/api/admin/accounts", get(admin::list_accounts))
         .route("/api/admin/accounts/:id/topup", post(admin::topup))

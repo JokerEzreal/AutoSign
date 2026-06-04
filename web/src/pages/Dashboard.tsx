@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
-import { patch, post, yuan } from "../api";
+import { get, patch, post, yuan } from "../api";
 import { useMe } from "../auth";
+
+interface Venues {
+  bssid_venues: string[];
+  ignore_wifi: string[];
+}
 
 export default function Dashboard() {
   const { me, reload } = useMe();
@@ -9,6 +14,11 @@ export default function Dashboard() {
   const [sel, setSel] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [venues, setVenues] = useState<Venues | null>(null);
+
+  useEffect(() => {
+    get<Venues>("/api/venues").then(setVenues).catch(() => {});
+  }, []);
 
   // 账号数据变化时重置勾选
   useEffect(() => {
@@ -158,6 +168,35 @@ export default function Dashboard() {
           <p className="muted">暂无课程,点击「立即同步」从学校系统拉取。</p>
         )}
       </div>
+
+      {venues && (
+        <div className="card">
+          <h3>支持的教室</h3>
+          <p className="muted" style={{ margin: "0 0 14px" }}>
+            只有在以下教室上课才能自动签到;其它教室暂不支持(签到会自动跳过并在记录中标注)。
+          </p>
+          <div className="row" style={{ flexWrap: "wrap", gap: 8 }}>
+            {venues.bssid_venues.map((v) => (
+              <span key={v} className="badge muted" style={{ fontFamily: "var(--font-mono)" }}>
+                {v}
+              </span>
+            ))}
+            {venues.ignore_wifi.map((v) => (
+              <span
+                key={v}
+                className="badge good"
+                style={{ fontFamily: "var(--font-mono)" }}
+                title="免 WiFi 教室"
+              >
+                {v}
+              </span>
+            ))}
+          </div>
+          <p className="muted" style={{ margin: "12px 0 0", fontSize: 12 }}>
+            绿色为免 WiFi 教室,其余为已采集 WiFi 的教室。
+          </p>
+        </div>
+      )}
     </div>
   );
 }

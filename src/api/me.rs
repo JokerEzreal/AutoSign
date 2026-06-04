@@ -11,8 +11,18 @@ use serde_json::json;
 use super::{paginate, ApiError, ApiResult};
 use crate::auth::AuthCtx;
 use crate::crypto;
+use crate::engine::instatt;
 use crate::models::{BalanceTx, SignRecord};
 use crate::state::AppState;
+
+/// 当前支持自动签到的教室(有 BSSID 的 + 免 WiFi 的)。任意登录用户可读。
+pub async fn venues(_ctx: AuthCtx) -> ApiResult {
+    let bssid: Vec<&str> = instatt::VENUE_BSSIDS.iter().map(|(v, _)| *v).collect();
+    Ok(Json(json!({
+        "bssid_venues": bssid,
+        "ignore_wifi": instatt::IGNORE_WIFI_VENUES,
+    })))
+}
 
 /// 取当前登录账号 id;超管无个人账号时报错。
 fn require_account(ctx: &AuthCtx) -> Result<i64, ApiError> {

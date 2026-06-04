@@ -20,6 +20,16 @@ function resultBadge(r: string) {
   return <span className="badge bad">失败</span>;
 }
 
+/** 把内部 detail 翻译成用户可读说明 */
+function detailText(detail: string): string {
+  if (detail.startsWith("missing_bssid:")) {
+    return "暂不支持该教室 " + detail.slice("missing_bssid:".length);
+  }
+  if (detail === "missing_device_uid") return "设备未注册,请重新登录";
+  if (detail.startsWith("status_")) return "签到被拒:" + detail;
+  return detail;
+}
+
 export default function Records() {
   const [rows, setRows] = useState<Rec[]>([]);
   const [page, setPage] = useState(0);
@@ -57,7 +67,7 @@ export default function Records() {
                   {resultBadge(r.result)}
                   {r.result === "failed" && r.detail && (
                     <div className="muted" style={{ fontSize: 12 }}>
-                      {r.detail}
+                      {detailText(r.detail)}
                     </div>
                   )}
                 </td>

@@ -11,29 +11,46 @@ pub const FIREBASE_PROJECT_ID: &str = "instatt-3c80d";
 pub const AZURE_TENANT_ID: &str = "274313da-18e1-40ab-97e0-adc6eb1ec699";
 pub const AZURE_CLIENT_ID: &str = "e9ed2cb6-da5d-48dc-b8be-28b0d6016e53";
 
-/// 教室 BSSID 映射(已收集)。
-pub fn venue_bssid(venue_upper: &str) -> Option<&'static str> {
-    Some(match venue_upper {
-        "F3C04" => "a0:0f:37:e0:3c:2c",
-        "DA08" => "14:84:73:40:3d:ec",
-        "F4C10" => "34:b8:83:56:3e:2c",
-        "F1A13" => "9c:d5:7d:a5:e2:e3",
-        "F3A04" => "a0:0f:37:e1:b0:2c",
-        "F3A08" => "a0:0f:37:e1:b0:2c",
-        "BB80" => "8c:1e:80:22:e9:2c",
-        "F1A02" => "a0:0f:37:e0:57:4c",
-        "F1A24" => "a0:0f:37:e0:57:4c",
-        "TCR1" => "9c:d5:7d:a5:e4:4a",
-        "F3A12" => "9c:d5:7d:a5:a8:0c",
-        "F3B06" => "34:b8:83:5e:03:eb",
-        "F4B10" => "34:b8:83:56:98:0b",
-        _ => return None,
-    })
-}
+/// 已收集 BSSID 的教室(教室代码, BSSID)。单一数据源。
+pub const VENUE_BSSIDS: &[(&str, &str)] = &[
+    ("F3C04", "a0:0f:37:e0:3c:2c"),
+    ("DA08", "14:84:73:40:3d:ec"),
+    ("F4C10", "34:b8:83:56:3e:2c"),
+    ("F1A13", "9c:d5:7d:a5:e2:e3"),
+    ("F3A04", "a0:0f:37:e1:b0:2c"),
+    ("F3A08", "a0:0f:37:e1:b0:2c"),
+    ("BB80", "8c:1e:80:22:e9:2c"),
+    ("F1A02", "a0:0f:37:e0:57:4c"),
+    ("F1A24", "a0:0f:37:e0:57:4c"),
+    ("TCR1", "9c:d5:7d:a5:e4:4a"),
+    ("F3A12", "9c:d5:7d:a5:a8:0c"),
+    ("F3B06", "34:b8:83:5e:03:eb"),
+    ("F4B10", "34:b8:83:56:98:0b"),
+];
 
 /// 不检查 WiFi 的教室(ignoreWifi=true),任意 BSSID 可签。
+pub const IGNORE_WIFI_VENUES: &[&str] = &["DA05", "DA07", "NB03", "NOLOC", "ONLINE"];
+
+/// 教室 BSSID 查找(传入大写教室代码)。
+pub fn venue_bssid(venue_upper: &str) -> Option<&'static str> {
+    VENUE_BSSIDS
+        .iter()
+        .find(|(v, _)| *v == venue_upper)
+        .map(|(_, b)| *b)
+}
+
+/// 是否为免 WiFi 教室。
 pub fn is_ignore_wifi(venue_upper: &str) -> bool {
-    matches!(venue_upper, "DA05" | "DA07" | "NB03" | "NOLOC" | "ONLINE")
+    IGNORE_WIFI_VENUES.contains(&venue_upper)
+}
+
+/// 当前支持自动签到的全部教室代码(有 BSSID 的 + 免 WiFi 的)。
+pub fn supported_venues() -> Vec<&'static str> {
+    VENUE_BSSIDS
+        .iter()
+        .map(|(v, _)| *v)
+        .chain(IGNORE_WIFI_VENUES.iter().copied())
+        .collect()
 }
 
 /// 解析教室应使用的 BSSID。None 表示既非 ignoreWifi 又缺 BSSID,无法签到。
