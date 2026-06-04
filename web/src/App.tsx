@@ -27,7 +27,10 @@ function Layout({ children }: { children: React.ReactNode }) {
     <div className="app">
       <aside className="sidebar">
         <div className="brand">
-          InstAtt
+          <span className="mark">
+            <span className="dot" />
+            InstAtt
+          </span>
           <small>自动签到面板</small>
         </div>
         {isUser && (
@@ -45,9 +48,7 @@ function Layout({ children }: { children: React.ReactNode }) {
         )}
         {isAdmin && (
           <>
-            <div className="muted" style={{ padding: "12px 12px 4px", fontSize: 12 }}>
-              管理
-            </div>
+            <div className="nav-section">管理</div>
             <NavLink to="/admin/stats" className="navlink">
               统计看板
             </NavLink>
@@ -62,14 +63,14 @@ function Layout({ children }: { children: React.ReactNode }) {
           </>
         )}
         <div className="nav-spacer" />
-        <div className="muted" style={{ padding: "0 12px 8px", fontSize: 12 }}>
-          {me?.account ? me.account.account_name : me?.role}
-        </div>
+        <div className="nav-user">{me?.account ? me.account.account_name : me?.role}</div>
         <button className="ghost" onClick={logout}>
           退出登录
         </button>
       </aside>
-      <main className="content">{children}</main>
+      <main className="content">
+        <div className="content-inner">{children}</div>
+      </main>
     </div>
   );
 }
