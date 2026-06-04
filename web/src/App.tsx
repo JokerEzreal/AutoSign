@@ -2,6 +2,7 @@ import { Navigate, NavLink, Route, Routes, useNavigate } from "react-router-dom"
 import { useMe } from "./auth";
 import { post } from "./api";
 import Login from "./pages/Login";
+import AdminLogin from "./pages/AdminLogin";
 import Dashboard from "./pages/Dashboard";
 import Records from "./pages/Records";
 import Transactions from "./pages/Transactions";
@@ -84,6 +85,7 @@ export default function App() {
     return (
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/manage" element={<AdminLogin />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     );
