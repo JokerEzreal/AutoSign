@@ -1,6 +1,7 @@
 mod config;
 mod crypto;
 mod db;
+mod engine;
 mod models;
 
 use axum::{routing::get, Json, Router};
