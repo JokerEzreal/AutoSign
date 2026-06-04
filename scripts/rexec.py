@@ -17,6 +17,11 @@ def load_env():
     return env
 
 def main():
+    # 强制 UTF-8 输出,避免 Windows GBK 控制台无法编码 ✓ 等字符而崩溃
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
     cmd = sys.argv[1]
     env = load_env()
     c = paramiko.SSHClient()

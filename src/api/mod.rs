@@ -11,6 +11,7 @@ use axum::{
     Json, Router,
 };
 use serde_json::{json, Value};
+use tower_http::services::{ServeDir, ServeFile};
 
 use crate::state::AppState;
 
@@ -103,9 +104,18 @@ pub fn router(state: AppState) -> Router {
         .route("/api/admin/stats", get(admin::stats))
         // 仅超管
         .route("/api/admin/accounts/:id/role", patch(admin::set_role))
-        .route("/api/admin/config", patch(admin::set_config))
+        .route("/api/admin/config", get(admin::get_config).patch(admin::set_config))
         .route("/api/admin/superadmin/password", post(admin::change_password))
         .with_state(state)
+        // 托管 SPA:非 API 路径回退到 index.html(支持前端路由)
+        .fallback_service(spa_service())
+}
+
+/// 静态 SPA 服务:存在的文件直出,其余回退 index.html。
+fn spa_service() -> ServeDir<ServeFile> {
+    let web_dir = std::env::var("WEB_DIR").unwrap_or_else(|_| "web/dist".into());
+    let index = format!("{web_dir}/index.html");
+    ServeDir::new(web_dir).fallback(ServeFile::new(index))
 }
 
 async fn health() -> Json<Value> {

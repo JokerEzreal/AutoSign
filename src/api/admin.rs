@@ -167,6 +167,15 @@ pub async fn set_role(State(st): State<AppState>, _su: SuperAdminCtx, Path(id): 
     Ok(Json(json!({"role": b.role})))
 }
 
+/// 读取全部 system_config(管理员可读)。
+pub async fn get_config(State(st): State<AppState>, _admin: AdminCtx) -> ApiResult {
+    let rows: Vec<(String, String)> = sqlx::query_as("SELECT key, value FROM system_config")
+        .fetch_all(&st.pool)
+        .await?;
+    let config: HashMap<String, String> = rows.into_iter().collect();
+    Ok(Json(json!({ "config": config })))
+}
+
 /// 更新 system_config(注:引擎参数在重启后生效)。
 pub async fn set_config(State(st): State<AppState>, _su: SuperAdminCtx, Json(map): Json<HashMap<String, String>>) -> ApiResult {
     for (k, v) in &map {
