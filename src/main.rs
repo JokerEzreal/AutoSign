@@ -1,4 +1,7 @@
 mod config;
+mod crypto;
+mod db;
+mod models;
 
 use axum::{routing::get, Json, Router};
 use serde_json::json;
@@ -19,6 +22,14 @@ async fn main() {
         .init();
 
     let cfg = Config::from_env();
+
+    let pool = db::connect_and_migrate(&cfg.database_url)
+        .await
+        .expect("数据库连接/迁移失败");
+    db::seed::seed(&pool, &cfg.superadmin_username, &cfg.superadmin_password)
+        .await
+        .expect("seed 失败");
+    tracing::info!("数据库就绪,迁移与 seed 完成");
 
     let app = Router::new()
         .route("/api/health", get(health))

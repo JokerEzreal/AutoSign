@@ -7,3 +7,6 @@ web/dist
 
 # sensitive: real user refresh tokens
 instatt_tokens.json
+
+# deploy credentials (server host/user/password)
+.deploy.env
