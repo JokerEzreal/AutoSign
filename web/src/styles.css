@@ -128,3 +128,13 @@ tr:hover td { background: var(--panel-2); }
   display: flex; align-items: center; justify-content: center; z-index: 50;
 }
 .modal { width: 380px; }
+
+/* 课程勾选列表 */
+.course-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+.course-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 14px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--panel-2); cursor: pointer; transition: border-color .15s;
+}
+.course-item.on { border-color: var(--accent); }
+.course-item input { width: auto; }

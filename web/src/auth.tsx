@@ -4,11 +4,13 @@ import { get } from "./api";
 export interface AccountInfo {
   id: number;
   account_name: string;
-  student_id_masked: string;
+  student_id: string;
+  course: string;
   balance_cents: number;
   auto_sign: boolean;
   status: string;
   modules: string[];
+  enabled_modules: string[];
   last_synced_at: string | null;
 }
 

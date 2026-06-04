@@ -81,8 +81,9 @@ async fn load_recent_signed_keys(engine: &Engine) -> anyhow::Result<HashSet<Stri
 }
 
 async fn load_signable_accounts(engine: &Engine) -> anyhow::Result<Vec<(i64, Vec<String>)>> {
+    // 只匹配用户「已启用自动签」的课程(enabled_modules)。
     let rows: Vec<(i64, serde_json::Value)> = sqlx::query_as(
-        "SELECT id, my_modules FROM accounts
+        "SELECT id, enabled_modules FROM accounts
          WHERE status='active' AND auto_sign = true AND balance_cents >= $1",
     )
     .bind(engine.price_cents)
@@ -161,8 +162,8 @@ mod tests {
         let dev = crypto::encrypt_str(&KEY, "12345678abcd").unwrap();
         let fb = crypto::encrypt_str(&KEY, "fbrt").unwrap();
         let id: i64 = sqlx::query_scalar(
-            "INSERT INTO accounts (account_name, student_id, device_uid, firebase_rt, my_modules, balance_cents)
-             VALUES ('t','12345678',$1,$2,$3,500) RETURNING id",
+            "INSERT INTO accounts (account_name, student_id, device_uid, firebase_rt, my_modules, enabled_modules, balance_cents)
+             VALUES ('t','12345678',$1,$2,$3,$3,500) RETURNING id",
         )
         .bind(dev)
         .bind(fb)

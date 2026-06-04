@@ -30,6 +30,7 @@ pub struct ResolvedLogin {
     pub account_name: String,
     pub student_id: String,
     pub device_uid: String,
+    pub course: String,
     pub azure_rt: String,
     pub firebase_rt: String,
     pub modules: Vec<String>,
@@ -125,15 +126,13 @@ async fn resolve_login(
     let (id_token, firebase_rt) = client.firebase_id_token(&custom).await?;
 
     let numeric_id = user.employee_id.clone();
-    let device_uid = if !numeric_id.is_empty() {
-        client
-            .get_student_info(&id_token, &numeric_id)
-            .await?
-            .map(|s| s.device_uid)
-            .unwrap_or_default()
+    let info = if !numeric_id.is_empty() {
+        client.get_student_info(&id_token, &numeric_id).await?
     } else {
-        String::new()
+        None
     };
+    let device_uid = info.as_ref().map(|s| s.device_uid.clone()).unwrap_or_default();
+    let course = info.as_ref().map(|s| s.course.clone()).unwrap_or_default();
     let student_id = if !numeric_id.is_empty() {
         numeric_id
     } else {
@@ -155,6 +154,7 @@ async fn resolve_login(
         account_name,
         student_id,
         device_uid,
+        course,
         azure_rt: azure_refresh.to_string(),
         firebase_rt,
         modules,
@@ -183,14 +183,15 @@ pub async fn upsert_account(
 
     let (id, role): (i64, String) = sqlx::query_as(
         "INSERT INTO accounts
-            (account_name, student_id, device_uid, azure_rt, firebase_rt, my_modules, status, last_synced_at, last_refresh_at)
-         VALUES ($1,$2,$3,$4,$5, COALESCE($6,'[]'::jsonb), 'active', now(), now())
+            (account_name, student_id, device_uid, azure_rt, firebase_rt, my_modules, enabled_modules, course, status, last_synced_at, last_refresh_at)
+         VALUES ($1,$2,$3,$4,$5, COALESCE($6,'[]'::jsonb), COALESCE($6,'[]'::jsonb), $7, 'active', now(), now())
          ON CONFLICT (account_name) DO UPDATE SET
             student_id = CASE WHEN EXCLUDED.student_id <> '' THEN EXCLUDED.student_id ELSE accounts.student_id END,
             device_uid = COALESCE($3, accounts.device_uid),
             azure_rt = EXCLUDED.azure_rt,
             firebase_rt = EXCLUDED.firebase_rt,
             my_modules = COALESCE($6, accounts.my_modules),
+            course = CASE WHEN EXCLUDED.course <> '' THEN EXCLUDED.course ELSE accounts.course END,
             status = 'active',
             last_synced_at = now(), last_refresh_at = now(), updated_at = now()
          RETURNING id, role",
@@ -201,6 +202,7 @@ pub async fn upsert_account(
     .bind(az_enc)
     .bind(fb_enc)
     .bind(modules_json)
+    .bind(&login.course)
     .fetch_one(pool)
     .await?;
     Ok((id, role))
@@ -242,6 +244,7 @@ mod tests {
             account_name: "niubi666".into(),
             student_id: "12345678".into(),
             device_uid: device.into(),
+            course: "Computer Science".into(),
             azure_rt: "az".into(),
             firebase_rt: "fb".into(),
             modules: modules.into_iter().map(|s| s.to_string()).collect(),

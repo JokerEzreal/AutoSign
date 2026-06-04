@@ -93,6 +93,7 @@ pub fn router(state: AppState) -> Router {
         // 用户自己
         .route("/api/me", get(me::get_me))
         .route("/api/me/auto-sign", patch(me::set_auto_sign))
+        .route("/api/me/modules", patch(me::set_modules))
         .route("/api/me/sync", post(me::sync))
         .route("/api/me/records", get(me::records))
         .route("/api/me/transactions", get(me::transactions))

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { post, yuan } from "../api";
+import { patch, post, yuan } from "../api";
 import { useMe } from "../auth";
 
 export default function Dashboard() {
@@ -14,6 +14,19 @@ export default function Dashboard() {
     setBusy(true);
     try {
       await post("/api/me/auto-sign", { auto_sign: !acc.auto_sign });
+      await reload();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleModule = async (mod: string, on: boolean) => {
+    const next = on
+      ? [...acc.enabled_modules, mod]
+      : acc.enabled_modules.filter((m) => m !== mod);
+    setBusy(true);
+    try {
+      await patch("/api/me/modules", { enabled: next });
       await reload();
     } finally {
       setBusy(false);
@@ -84,7 +97,11 @@ export default function Dashboard() {
         </div>
         <div className="kv">
           <span className="muted">学号</span>
-          <span>{acc.student_id_masked}</span>
+          <span>{acc.student_id || "—"}</span>
+        </div>
+        <div className="kv">
+          <span className="muted">专业</span>
+          <span>{acc.course || "—"}</span>
         </div>
         <div className="kv">
           <span className="muted">上次同步</span>
@@ -94,19 +111,33 @@ export default function Dashboard() {
 
       <div className="card">
         <div className="row between">
-          <h3 style={{ margin: 0 }}>已绑定课程({acc.modules.length})</h3>
+          <div>
+            <h3 style={{ margin: 0 }}>课程自动签到({acc.enabled_modules.length}/{acc.modules.length})</h3>
+            <p className="muted" style={{ margin: "6px 0 0" }}>
+              勾选要自动签到的课程,未勾选的不会自动签。
+            </p>
+          </div>
           <button className="ghost" onClick={sync} disabled={busy}>
             {busy ? "处理中…" : "立即同步"}
           </button>
         </div>
         <div className="spacer" />
         {acc.modules.length ? (
-          <div className="row" style={{ flexWrap: "wrap", gap: 8 }}>
-            {acc.modules.map((m) => (
-              <span key={m} className="badge muted">
-                {m}
-              </span>
-            ))}
+          <div className="course-list">
+            {acc.modules.map((m) => {
+              const on = acc.enabled_modules.includes(m);
+              return (
+                <label key={m} className={"course-item" + (on ? " on" : "")}>
+                  <input
+                    type="checkbox"
+                    checked={on}
+                    disabled={busy}
+                    onChange={() => toggleModule(m, !on)}
+                  />
+                  <span>{m}</span>
+                </label>
+              );
+            })}
           </div>
         ) : (
           <p className="muted">暂无课程,点击「立即同步」从学校系统拉取。</p>
