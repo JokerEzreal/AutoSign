@@ -32,6 +32,10 @@ async fn main() {
         .expect("seed 失败");
     tracing::info!("数据库就绪,迁移与 seed 完成");
 
+    // 启动签到引擎(轮询器 + 每日刷新器)
+    let _engine = engine::run(pool.clone(), cfg.encryption_key).await;
+    tracing::info!("签到引擎已启动");
+
     let app = Router::new()
         .route("/api/health", get(health))
         .layer(TraceLayer::new_for_http());
