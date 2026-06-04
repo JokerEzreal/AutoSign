@@ -69,19 +69,19 @@ impl Engine {
     }
 
     async fn try_sign(&self, account_id: i64, class: &OngoingClass) -> anyhow::Result<()> {
-        // 1) 校验前置条件 + 取账号字段
-        let row: Option<(String, bool, i64, String, Option<Vec<u8>>)> = sqlx::query_as(
-            "SELECT status, auto_sign, balance_cents, student_id, device_uid FROM accounts WHERE id=$1",
+        // 1) 校验前置条件 + 取账号字段(优先判断余额是否足够)
+        let row: Option<(String, i64, String, Option<Vec<u8>>)> = sqlx::query_as(
+            "SELECT status, balance_cents, student_id, device_uid FROM accounts WHERE id=$1",
         )
         .bind(account_id)
         .fetch_optional(&self.pool)
         .await?;
-        let (status, auto_sign, balance, student_id, device_uid_enc) = match row {
+        let (status, balance, student_id, device_uid_enc) = match row {
             Some(r) => r,
             None => return Ok(()),
         };
-        if status != "active" || !auto_sign || balance < self.price_cents {
-            return Ok(()); // 不满足条件,跳过(不记录,余额回升后下轮可签)
+        if status != "active" || balance < self.price_cents {
+            return Ok(()); // 余额不足或账号停用 → 跳过(不记录,余额回升后下轮可签)
         }
 
         let device_uid = crypto::decrypt_str(&self.enc_key, &device_uid_enc.unwrap_or_default())?;

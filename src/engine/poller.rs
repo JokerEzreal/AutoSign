@@ -81,10 +81,10 @@ async fn load_recent_signed_keys(engine: &Engine) -> anyhow::Result<HashSet<Stri
 }
 
 async fn load_signable_accounts(engine: &Engine) -> anyhow::Result<Vec<(i64, Vec<String>)>> {
-    // 只匹配用户「已启用自动签」的课程(enabled_modules)。
+    // 只匹配用户「已勾选自动签」的课程(enabled_modules),且余额充足(优先判断余额)。
     let rows: Vec<(i64, serde_json::Value)> = sqlx::query_as(
         "SELECT id, enabled_modules FROM accounts
-         WHERE status='active' AND auto_sign = true AND balance_cents >= $1",
+         WHERE status='active' AND balance_cents >= $1",
     )
     .bind(engine.price_cents)
     .fetch_all(&engine.pool)

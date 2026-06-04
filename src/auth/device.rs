@@ -34,6 +34,8 @@ pub struct ResolvedLogin {
     pub azure_rt: String,
     pub firebase_rt: String,
     pub modules: Vec<String>,
+    /// { 课程代码: 课程名 }
+    pub module_info: serde_json::Value,
 }
 
 /// 发起 Device Code,落库一条 pending 会话。
@@ -138,17 +140,16 @@ async fn resolve_login(
     } else {
         device_uid.chars().take(8).collect()
     };
-    let modules = if !student_id.is_empty() {
+    let module_list = if !student_id.is_empty() {
         client
             .get_student_modules(&id_token, &student_id, "25-26")
             .await
             .unwrap_or_default()
-            .into_iter()
-            .map(|m| m.module_id)
-            .collect()
     } else {
         vec![]
     };
+    let modules: Vec<String> = module_list.iter().map(|m| m.module_id.clone()).collect();
+    let module_info = crate::engine::instatt::modules_to_info_map(&module_list);
 
     Ok(ResolvedLogin {
         account_name,
@@ -158,6 +159,7 @@ async fn resolve_login(
         azure_rt: azure_refresh.to_string(),
         firebase_rt,
         modules,
+        module_info,
     })
 }
 
@@ -178,13 +180,18 @@ pub async fn upsert_account(
     } else {
         Some(serde_json::json!(login.modules))
     };
+    let module_info_json: Option<serde_json::Value> = if login.modules.is_empty() {
+        None
+    } else {
+        Some(login.module_info.clone())
+    };
     let az_enc = crypto::encrypt_str(enc_key, &login.azure_rt)?;
     let fb_enc = crypto::encrypt_str(enc_key, &login.firebase_rt)?;
 
     let (id, role): (i64, String) = sqlx::query_as(
         "INSERT INTO accounts
-            (account_name, student_id, device_uid, azure_rt, firebase_rt, my_modules, enabled_modules, course, status, last_synced_at, last_refresh_at)
-         VALUES ($1,$2,$3,$4,$5, COALESCE($6,'[]'::jsonb), COALESCE($6,'[]'::jsonb), $7, 'active', now(), now())
+            (account_name, student_id, device_uid, azure_rt, firebase_rt, my_modules, enabled_modules, course, module_info, status, last_synced_at, last_refresh_at)
+         VALUES ($1,$2,$3,$4,$5, COALESCE($6,'[]'::jsonb), COALESCE($6,'[]'::jsonb), $7, COALESCE($8,'{}'::jsonb), 'active', now(), now())
          ON CONFLICT (account_name) DO UPDATE SET
             student_id = CASE WHEN EXCLUDED.student_id <> '' THEN EXCLUDED.student_id ELSE accounts.student_id END,
             device_uid = COALESCE($3, accounts.device_uid),
@@ -192,6 +199,7 @@ pub async fn upsert_account(
             firebase_rt = EXCLUDED.firebase_rt,
             my_modules = COALESCE($6, accounts.my_modules),
             course = CASE WHEN EXCLUDED.course <> '' THEN EXCLUDED.course ELSE accounts.course END,
+            module_info = COALESCE($8, accounts.module_info),
             status = 'active',
             last_synced_at = now(), last_refresh_at = now(), updated_at = now()
          RETURNING id, role",
@@ -203,6 +211,7 @@ pub async fn upsert_account(
     .bind(fb_enc)
     .bind(modules_json)
     .bind(&login.course)
+    .bind(module_info_json)
     .fetch_one(pool)
     .await?;
     Ok((id, role))
@@ -247,7 +256,13 @@ mod tests {
             course: "Computer Science".into(),
             azure_rt: "az".into(),
             firebase_rt: "fb".into(),
-            modules: modules.into_iter().map(|s| s.to_string()).collect(),
+            modules: modules.iter().map(|s| s.to_string()).collect(),
+            module_info: serde_json::Value::Object(
+                modules
+                    .iter()
+                    .map(|s| (s.to_string(), serde_json::Value::String(format!("{s} 课程名"))))
+                    .collect(),
+            ),
         }
     }
 

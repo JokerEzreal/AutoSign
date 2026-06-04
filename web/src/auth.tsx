@@ -11,6 +11,7 @@ export interface AccountInfo {
   status: string;
   modules: string[];
   enabled_modules: string[];
+  module_info: Record<string, string>;
   last_synced_at: string | null;
 }
 

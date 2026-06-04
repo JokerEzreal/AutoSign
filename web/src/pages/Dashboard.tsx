@@ -1,33 +1,38 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { patch, post, yuan } from "../api";
 import { useMe } from "../auth";
 
 export default function Dashboard() {
   const { me, reload } = useMe();
   const acc = me?.account;
+
+  const [sel, setSel] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
 
+  // 账号数据变化时重置勾选
+  useEffect(() => {
+    if (acc) setSel(acc.enabled_modules);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [acc?.enabled_modules.join(",")]);
+
   if (!acc) return null;
 
-  const toggleAuto = async () => {
-    setBusy(true);
-    try {
-      await post("/api/me/auto-sign", { auto_sign: !acc.auto_sign });
-      await reload();
-    } finally {
-      setBusy(false);
-    }
-  };
+  const dirty =
+    JSON.stringify([...sel].sort()) !== JSON.stringify([...acc.enabled_modules].sort());
 
-  const toggleModule = async (mod: string, on: boolean) => {
-    const next = on
-      ? [...acc.enabled_modules, mod]
-      : acc.enabled_modules.filter((m) => m !== mod);
+  const toggle = (m: string) =>
+    setSel((s) => (s.includes(m) ? s.filter((x) => x !== m) : [...s, m]));
+
+  const save = async () => {
     setBusy(true);
+    setMsg("");
     try {
-      await patch("/api/me/modules", { enabled: next });
+      await patch("/api/me/modules", { enabled: sel });
       await reload();
+      setMsg("已保存,所选课程将自动签到");
+    } catch (e: any) {
+      setMsg("保存失败:" + e.message);
     } finally {
       setBusy(false);
     }
@@ -56,6 +61,8 @@ export default function Dashboard() {
       <span className="badge muted">已停用</span>
     );
 
+  const lowBalance = acc.balance_cents <= 0;
+
   return (
     <div>
       <h2 className="page-title">仪表盘</h2>
@@ -65,6 +72,9 @@ export default function Dashboard() {
           登录已失效,自动签到已暂停。请退出后用学校账号重新登录。
         </div>
       )}
+      {lowBalance && (
+        <div className="banner warn">余额不足,暂不会自动签到。请联系管理员充值。</div>
+      )}
 
       <div className="grid">
         <div className="stat">
@@ -72,13 +82,10 @@ export default function Dashboard() {
           <div className="value">{yuan(acc.balance_cents)}</div>
         </div>
         <div className="stat">
-          <div className="label">挂机状态</div>
-          <div className="value" style={{ fontSize: 18 }}>
-            {acc.auto_sign ? (
-              <span className="badge good">已开启</span>
-            ) : (
-              <span className="badge muted">已关闭</span>
-            )}
+          <div className="label">自动签到课程</div>
+          <div className="value">
+            {acc.enabled_modules.length}
+            <span style={{ fontSize: 15, color: "var(--muted)" }}> / {acc.modules.length} 门</span>
           </div>
         </div>
         <div className="stat">
@@ -112,9 +119,9 @@ export default function Dashboard() {
       <div className="card">
         <div className="row between">
           <div>
-            <h3 style={{ margin: 0 }}>课程自动签到({acc.enabled_modules.length}/{acc.modules.length})</h3>
+            <h3 style={{ margin: 0 }}>课程自动签到</h3>
             <p className="muted" style={{ margin: "6px 0 0" }}>
-              勾选要自动签到的课程,未勾选的不会自动签。
+              勾选要自动签到的课程后点「保存」即生效;课程解锁时自动签到,成功一次扣 ¥1.00,余额不足则不签。
             </p>
           </div>
           <button className="ghost" onClick={sync} disabled={busy}>
@@ -123,40 +130,33 @@ export default function Dashboard() {
         </div>
         <div className="spacer" />
         {acc.modules.length ? (
-          <div className="course-list">
-            {acc.modules.map((m) => {
-              const on = acc.enabled_modules.includes(m);
-              return (
-                <label key={m} className={"course-item" + (on ? " on" : "")}>
-                  <input
-                    type="checkbox"
-                    checked={on}
-                    disabled={busy}
-                    onChange={() => toggleModule(m, !on)}
-                  />
-                  <span>{m}</span>
-                </label>
-              );
-            })}
-          </div>
+          <>
+            <div className="course-list">
+              {acc.modules.map((m) => {
+                const on = sel.includes(m);
+                const name = acc.module_info[m];
+                return (
+                  <label key={m} className={"course-item" + (on ? " on" : "")}>
+                    <input type="checkbox" checked={on} disabled={busy} onChange={() => toggle(m)} />
+                    <div className="course-text">
+                      <div className="course-id">{m}</div>
+                      {name && <div className="course-name">{name}</div>}
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+            <div className="spacer" />
+            <div className="row between">
+              <span className="muted">{msg}</span>
+              <button onClick={save} disabled={busy || !dirty}>
+                {dirty ? "保存" : "已保存"}
+              </button>
+            </div>
+          </>
         ) : (
           <p className="muted">暂无课程,点击「立即同步」从学校系统拉取。</p>
         )}
-        {msg && <div className="error-text" style={{ color: "var(--muted)" }}>{msg}</div>}
-      </div>
-
-      <div className="card">
-        <div className="row between">
-          <div>
-            <h3 style={{ margin: 0 }}>自动签到</h3>
-            <p className="muted" style={{ margin: "6px 0 0" }}>
-              开启后,系统会在你的课程解锁时自动签到并按成功次数计费。
-            </p>
-          </div>
-          <button onClick={toggleAuto} disabled={busy} className={acc.auto_sign ? "danger" : ""}>
-            {acc.auto_sign ? "关闭挂机" : "开启挂机"}
-          </button>
-        </div>
       </div>
     </div>
   );

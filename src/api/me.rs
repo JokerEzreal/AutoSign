@@ -25,15 +25,15 @@ pub async fn get_me(State(st): State<AppState>, ctx: AuthCtx) -> ApiResult {
         return Ok(Json(json!({"role": ctx.role, "account": null})));
     }
     let id = ctx.account_id.unwrap();
-    let row: Option<(String, String, String, i64, bool, String, String, serde_json::Value, serde_json::Value, Option<chrono::DateTime<chrono::Utc>>)> =
+    let row: Option<(String, String, String, i64, bool, String, String, serde_json::Value, serde_json::Value, serde_json::Value, Option<chrono::DateTime<chrono::Utc>>)> =
         sqlx::query_as(
-            "SELECT account_name, student_id, course, balance_cents, auto_sign, role, status, my_modules, enabled_modules, last_synced_at
+            "SELECT account_name, student_id, course, balance_cents, auto_sign, role, status, my_modules, enabled_modules, module_info, last_synced_at
              FROM accounts WHERE id=$1",
         )
         .bind(id)
         .fetch_optional(&st.pool)
         .await?;
-    let (account_name, student_id, course, balance, auto_sign, role, status, modules, enabled, last_synced) =
+    let (account_name, student_id, course, balance, auto_sign, role, status, modules, enabled, module_info, last_synced) =
         row.ok_or_else(|| ApiError::not_found("账号不存在"))?;
     Ok(Json(json!({
         "role": role,
@@ -47,6 +47,7 @@ pub async fn get_me(State(st): State<AppState>, ctx: AuthCtx) -> ApiResult {
             "status": status,
             "modules": serde_json::from_value::<Vec<String>>(modules).unwrap_or_default(),
             "enabled_modules": serde_json::from_value::<Vec<String>>(enabled).unwrap_or_default(),
+            "module_info": module_info,
             "last_synced_at": last_synced,
         }
     })))
@@ -126,16 +127,15 @@ pub async fn sync(State(st): State<AppState>, ctx: AuthCtx) -> ApiResult {
                 .await?;
         }
     }
-    // 课程
-    let modules: Vec<String> = st
+    // 课程(保留完整信息以构建 module_info)
+    let module_list = st
         .client
         .get_student_modules(&token, &student_id, "25-26")
         .await
-        .unwrap_or_default()
-        .into_iter()
-        .map(|m| m.module_id)
-        .collect();
+        .unwrap_or_default();
+    let modules: Vec<String> = module_list.iter().map(|m| m.module_id.clone()).collect();
     if !modules.is_empty() {
+        let module_info = crate::engine::instatt::modules_to_info_map(&module_list);
         // 已有的启用选择 + 旧课表,用于计算新启用集
         let (old_my, old_enabled): (serde_json::Value, serde_json::Value) =
             sqlx::query_as("SELECT my_modules, enabled_modules FROM accounts WHERE id=$1")
@@ -150,9 +150,10 @@ pub async fn sync(State(st): State<AppState>, ctx: AuthCtx) -> ApiResult {
             .filter(|m| old_enabled.contains(m) || !old_my.contains(m))
             .cloned()
             .collect();
-        sqlx::query("UPDATE accounts SET my_modules=$1, enabled_modules=$2, last_synced_at=now(), updated_at=now() WHERE id=$3")
+        sqlx::query("UPDATE accounts SET my_modules=$1, enabled_modules=$2, module_info=$3, last_synced_at=now(), updated_at=now() WHERE id=$4")
             .bind(serde_json::json!(modules))
             .bind(serde_json::json!(enabled))
+            .bind(module_info)
             .bind(id)
             .execute(&st.pool)
             .await?;

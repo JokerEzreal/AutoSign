@@ -88,6 +88,15 @@ pub struct Module {
     pub module_name: String,
 }
 
+/// 把课程列表构建为 { 课程代码: 课程名 } 的 JSON 映射。
+pub fn modules_to_info_map(mods: &[Module]) -> serde_json::Value {
+    let map: serde_json::Map<String, Value> = mods
+        .iter()
+        .map(|m| (m.module_id.clone(), Value::String(m.module_name.clone())))
+        .collect();
+    Value::Object(map)
+}
+
 #[derive(Debug, Clone)]
 pub struct OngoingClass {
     pub module_key: String,
