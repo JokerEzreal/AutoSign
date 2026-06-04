@@ -1,0 +1,18 @@
+[Unit]
+Description=InstAtt 自动签到 SaaS
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/instatt_saas
+EnvironmentFile=/opt/instatt_saas/.env
+ExecStart=/opt/instatt_saas/target/release/instatt_saas
+Restart=always
+RestartSec=3
+KillSignal=SIGTERM
+TimeoutStopSec=30
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
