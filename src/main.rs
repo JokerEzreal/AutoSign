@@ -1,8 +1,10 @@
+mod auth;
 mod config;
 mod crypto;
 mod db;
 mod engine;
 mod models;
+mod state;
 
 use axum::{routing::get, Json, Router};
 use serde_json::json;

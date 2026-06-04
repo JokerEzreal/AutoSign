@@ -1,10 +1,8 @@
 //! 启动期 seed:内置超管账号 + 默认 system_config。幂等。
 
-use argon2::{
-    password_hash::{rand_core::OsRng, SaltString},
-    Argon2, PasswordHasher,
-};
 use sqlx::PgPool;
+
+use crate::auth::password::hash as hash_password;
 
 /// 默认运行期配置(键, 值)。
 const DEFAULT_CONFIG: &[(&str, &str)] = &[
@@ -40,16 +38,6 @@ pub async fn seed(pool: &PgPool, superadmin_username: &str, superadmin_password:
             .await?;
     }
     Ok(())
-}
-
-/// argon2 哈希。
-pub fn hash_password(password: &str) -> anyhow::Result<String> {
-    let salt = SaltString::generate(&mut OsRng);
-    let hash = Argon2::default()
-        .hash_password(password.as_bytes(), &salt)
-        .map_err(|e| anyhow::anyhow!("argon2 hash 失败: {e}"))?
-        .to_string();
-    Ok(hash)
 }
 
 #[cfg(test)]
