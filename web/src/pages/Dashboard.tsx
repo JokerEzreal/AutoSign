@@ -182,12 +182,7 @@ export default function Dashboard() {
               </span>
             ))}
             {venues.ignore_wifi.map((v) => (
-              <span
-                key={v}
-                className="badge good"
-                style={{ fontFamily: "var(--font-mono)" }}
-                title="免 WiFi 教室"
-              >
+              <span key={v} className="badge muted" style={{ fontFamily: "var(--font-mono)" }}>
                 {v}
               </span>
             ))}

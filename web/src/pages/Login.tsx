@@ -66,7 +66,7 @@ export default function Login() {
   return (
     <div className="login-wrap">
       <div className="card login-card">
-        <h1>InstAtt 自动签到</h1>
+        <h1>Instatt 自动签到</h1>
         <p className="muted">用学校账号登录,即可挂机自动签到</p>
         <div className="spacer" />
 

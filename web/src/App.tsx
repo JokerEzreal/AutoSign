@@ -29,7 +29,7 @@ function Layout({ children }: { children: React.ReactNode }) {
         <div className="brand">
           <span className="mark">
             <span className="dot" />
-            InstAtt
+            Instatt
           </span>
           <small>自动签到面板</small>
         </div>
