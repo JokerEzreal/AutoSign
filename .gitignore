@@ -1,0 +1,9 @@
+/target
+.env
+*.log
+node_modules
+web/dist
+.sqlx
+
+# sensitive: real user refresh tokens
+instatt_tokens.json
