@@ -191,10 +191,8 @@ export default function Dashboard() {
                 {v}
               </span>
             ))}
+            <span className="badge pending">其他教室待添加…</span>
           </div>
-          <p className="muted" style={{ margin: "12px 0 0", fontSize: 12 }}>
-            绿色为免 WiFi 教室,其余为已采集 WiFi 的教室。
-          </p>
         </div>
       )}
     </div>
