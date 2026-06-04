@@ -1,3 +1,4 @@
+mod api;
 mod auth;
 mod config;
 mod crypto;
@@ -6,11 +7,11 @@ mod engine;
 mod models;
 mod state;
 
-use axum::{routing::get, Json, Router};
-use serde_json::json;
 use tower_http::trace::TraceLayer;
 
 use crate::config::Config;
+use crate::engine::instatt::InstAttClient;
+use crate::state::AppState;
 
 #[tokio::main]
 async fn main() {
@@ -35,22 +36,26 @@ async fn main() {
     tracing::info!("数据库就绪,迁移与 seed 完成");
 
     // 启动签到引擎(轮询器 + 每日刷新器)
-    let _engine = engine::run(pool.clone(), cfg.encryption_key).await;
+    let engine = engine::run(pool.clone(), cfg.encryption_key).await;
     tracing::info!("签到引擎已启动");
 
-    let app = Router::new()
-        .route("/api/health", get(health))
-        .layer(TraceLayer::new_for_http());
+    let state = AppState {
+        pool: pool.clone(),
+        jwt_secret: cfg.jwt_secret.clone(),
+        enc_key: cfg.encryption_key,
+        client: InstAttClient::new(),
+        engine,
+        superadmin_username: cfg.superadmin_username.clone(),
+        cookie_secure: cfg.cookie_secure,
+    };
+
+    let app = api::router(state).layer(TraceLayer::new_for_http());
 
     let listener = tokio::net::TcpListener::bind(&cfg.bind_addr)
         .await
         .expect("绑定监听地址失败");
     tracing::info!("listening on {}", cfg.bind_addr);
     axum::serve(listener, app).await.expect("HTTP 服务异常退出");
-}
-
-async fn health() -> Json<serde_json::Value> {
-    Json(json!({ "status": "ok" }))
 }
 
 /// 极简 .env 读取(避免额外依赖):逐行 KEY=VALUE 注入未设置的环境变量。

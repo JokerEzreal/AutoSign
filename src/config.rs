@@ -9,6 +9,8 @@ pub struct Config {
     pub superadmin_username: String,
     pub superadmin_password: String,
     pub bind_addr: String,
+    /// 生产(https,经 nginx)设 true,使 session cookie 带 Secure。
+    pub cookie_secure: bool,
 }
 
 impl Config {
@@ -36,6 +38,7 @@ impl Config {
             superadmin_username: req("SUPERADMIN_USERNAME"),
             superadmin_password: req("SUPERADMIN_PASSWORD"),
             bind_addr: std::env::var("BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:8080".into()),
+            cookie_secure: std::env::var("COOKIE_SECURE").map(|v| v == "true").unwrap_or(false),
         }
     }
 }
