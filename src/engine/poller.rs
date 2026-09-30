@@ -95,7 +95,7 @@ async fn load_signable_accounts(engine: &Engine) -> anyhow::Result<Vec<(i64, Vec
         .collect())
 }
 
-/// 生产轮询循环:周期性 poll_once,不阻塞等待 job。
+/// 生产轮询循环:周期性 poll_once,不阻塞等待 job;实时监听可通过 engine.wake 提前唤醒。
 pub async fn run_poller(engine: Arc<Engine>) {
     tracing::info!(
         "签到轮询启动,间隔 {:?},并发上限 {}",
@@ -104,7 +104,12 @@ pub async fn run_poller(engine: Arc<Engine>) {
     );
     loop {
         let _ = poll_once(engine.clone()).await;
-        tokio::time::sleep(engine.poll_interval).await;
+        tokio::select! {
+            _ = tokio::time::sleep(engine.poll_interval) => {}
+            _ = engine.wake.notified() => {
+                tracing::debug!("实时唤醒,立即轮询");
+            }
+        }
     }
 }
 
@@ -186,6 +191,7 @@ mod tests {
             sem: Arc::new(Semaphore::new(50)),
             acct_locks: DashMap::new(),
             inflight: DashMap::new(),
+            wake: tokio::sync::Notify::new(),
         });
 
         let handles = poll_once(engine.clone()).await;
@@ -214,5 +220,118 @@ mod tests {
         let bal2: i64 = sqlx::query_scalar("SELECT balance_cents FROM accounts WHERE id=$1")
             .bind(id).fetch_one(&pool).await.unwrap();
         assert_eq!(bal2, 400, "重复轮询不应再扣费");
+    }
+
+    /// 计数 responder:统计上游被调用次数。
+    struct Counting {
+        hits: Arc<std::sync::atomic::AtomicUsize>,
+        body: serde_json::Value,
+    }
+    impl wiremock::Respond for Counting {
+        fn respond(&self, _: &wiremock::Request) -> ResponseTemplate {
+            self.hits.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            ResponseTemplate::new(200).set_body_json(self.body.clone())
+        }
+    }
+
+    #[sqlx::test]
+    async fn fifty_accounts_same_class_all_signed_once(pool: PgPool) {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        // 50 个账号订阅同一门课,同一时刻解锁:全部签到成功、各扣一次、上游恰好 50 次调用
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(format!(
+                "/v1/projects/{}/databases/(default)/documents/ongoingClasses",
+                FIREBASE_PROJECT_ID
+            )))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "documents": [{"fields": {
+                    "moduleKey": {"stringValue": "COMP4082_AUM_26-27"},
+                    "moduleName": {"stringValue": "Autonomous Robotic Systems"},
+                    "venue": {"stringValue": "F1A24"},
+                    "classDate": {"integerValue": "20260930"},
+                    "startTime": {"integerValue": "1400"},
+                    "endTime": {"integerValue": "1600"}
+                }}]
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/v1/token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id_token": "TOK"})))
+            .mount(&server)
+            .await;
+        let sign_hits = Arc::new(AtomicUsize::new(0));
+        Mock::given(method("POST"))
+            .and(path("/signAttendance"))
+            .respond_with(Counting {
+                hits: sign_hits.clone(),
+                body: serde_json::json!({"result": {"statusCode": 200, "body": "ok"}}),
+            })
+            .mount(&server)
+            .await;
+
+        const N: usize = 50;
+        for i in 0..N {
+            let dev = crypto::encrypt_str(&KEY, &format!("{:08}abcd", 20700000 + i)).unwrap();
+            let fb = crypto::encrypt_str(&KEY, &format!("fbrt{i}")).unwrap();
+            sqlx::query(
+                "INSERT INTO accounts (account_name, student_id, device_uid, firebase_rt, my_modules, enabled_modules, balance_cents)
+                 VALUES ($1,$2,$3,$4,$5,$5,500)",
+            )
+            .bind(format!("u{i}"))
+            .bind(format!("{:08}", 20700000 + i))
+            .bind(dev)
+            .bind(fb)
+            .bind(serde_json::json!(["COMP4082"]))
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+
+        let base = server.uri();
+        let client = InstAttClient::with_bases(&base, &base, &base, &base, &base, &base);
+        let tokens = Arc::new(TokenManager::new(pool.clone(), client.clone(), KEY));
+        let engine = Arc::new(Engine {
+            pool: pool.clone(),
+            tokens,
+            client,
+            enc_key: KEY,
+            price_cents: 100,
+            poll_interval: Duration::from_secs(5),
+            jitter_ms_max: 0,
+            sem: Arc::new(Semaphore::new(50)),
+            acct_locks: DashMap::new(),
+            inflight: DashMap::new(),
+            wake: tokio::sync::Notify::new(),
+        });
+
+        let t0 = std::time::Instant::now();
+        let handles = poll_once(engine.clone()).await;
+        assert_eq!(handles.len(), N, "应派发 {N} 个 job");
+        for h in handles {
+            h.await.unwrap();
+        }
+        let elapsed = t0.elapsed();
+        eprintln!("[并发测试] {N} 个账号同一节课全部处理完毕,耗时 {elapsed:?}");
+
+        let (n_ok, sum_charged): (i64, i64) = sqlx::query_as(
+            "SELECT count(*), coalesce(sum(charged_cents),0)::bigint FROM sign_records WHERE result='ok_200'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(n_ok as usize, N, "每个账号恰好一条成功记录");
+        assert_eq!(sum_charged as usize, N * 100, "总扣费 = N × 单价");
+        let n_bal: i64 = sqlx::query_scalar("SELECT count(*) FROM accounts WHERE balance_cents=400")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(n_bal as usize, N, "每个账号余额都恰好减了一次");
+        assert_eq!(sign_hits.load(Ordering::SeqCst), N, "上游签到恰好被调用 N 次");
+        assert!(elapsed < Duration::from_secs(10), "50 并发应在 10s 内完成,实际 {elapsed:?}");
+
+        // 再轮询一次:全部已处理,不派发新 job
+        assert!(poll_once(engine).await.is_empty(), "重复轮询不应再派发");
     }
 }

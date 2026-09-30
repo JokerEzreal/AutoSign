@@ -32,6 +32,69 @@ pub const VENUE_BSSIDS: &[(&str, &str)] = &[
 /// 不检查 WiFi 的教室(ignoreWifi=true),任意 BSSID 可签。
 pub const IGNORE_WIFI_VENUES: &[&str] = &["DA05", "DA07", "NB03", "NOLOC", "ONLINE"];
 
+/// 新学年起始月份(9 月秋季学期开学)。
+const ACADEMIC_YEAR_START_MONTH: u32 = 9;
+
+/// 某日期所属学年,格式与上游 courseYear 一致("YY-YY"):
+/// 2026-09-30 → "26-27",2026-06-05 → "25-26"。
+pub fn academic_year_for(date: chrono::NaiveDate) -> String {
+    use chrono::Datelike;
+    let start = if date.month() >= ACADEMIC_YEAR_START_MONTH {
+        date.year()
+    } else {
+        date.year() - 1
+    };
+    format!("{:02}-{:02}", start % 100, (start + 1) % 100)
+}
+
+/// 当前学年(按校区日期)。
+pub fn current_academic_year() -> String {
+    academic_year_for(campus_now().date_naive())
+}
+
+/// 校区时区(马来西亚,UTC+8)。上游 classDate / startTime 均按此时区。
+pub const CAMPUS_UTC_OFFSET_HOURS: i32 = 8;
+
+/// 校区当前时间。
+pub fn campus_now() -> chrono::DateTime<chrono::FixedOffset> {
+    let off = chrono::FixedOffset::east_opt(CAMPUS_UTC_OFFSET_HOURS * 3600).expect("固定时区偏移");
+    chrono::Utc::now().with_timezone(&off)
+}
+
+/// 时间点 → 上游格式 (classDate=YYYYMMDD, HHMM)。
+pub fn date_hhmm<Tz: chrono::TimeZone>(t: &chrono::DateTime<Tz>) -> (i64, i64) {
+    use chrono::{Datelike, Timelike};
+    let d = t.year() as i64 * 10000 + t.month() as i64 * 100 + t.day() as i64;
+    let h = t.hour() as i64 * 100 + t.minute() as i64;
+    (d, h)
+}
+
+/// 上游 global/classType 的课型编码。
+pub const CLASS_TYPES: &[(i64, &str)] = &[
+    (0, "lecture"),
+    (1, "tutorial"),
+    (2, "seminar"),
+    (3, "workshop"),
+    (4, "practical"),
+    (5, "computing"),
+    (6, "field trip"),
+    (7, "lab"),
+    (8, "screening"),
+    (9, "assessment"),
+    (10, "drop-in"),
+    (11, "presentation"),
+    (12, "placement"),
+];
+
+/// 课型编码 → 名称(未知编码返回空串)。
+pub fn class_type_label(t: i64) -> &'static str {
+    CLASS_TYPES
+        .iter()
+        .find(|(k, _)| *k == t)
+        .map(|(_, v)| *v)
+        .unwrap_or("")
+}
+
 /// 教室 BSSID 查找(传入大写教室代码)。
 pub fn venue_bssid(venue_upper: &str) -> Option<&'static str> {
     VENUE_BSSIDS
@@ -123,6 +186,36 @@ pub struct OngoingClass {
     pub class_date: i64,
     pub start_time: i64,
     pub end_time: i64,
+    /// 已签到人数(上游 studentsAttended)。
+    pub students_attended: i64,
+    /// 解锁老师姓名(上游 unlockUserName)。
+    pub unlock_user_name: String,
+}
+
+/// students/{id}/classes 中的一节课:学生视角的课表 + 官方考勤。
+#[derive(Debug, Clone)]
+pub struct StudentClass {
+    pub module_key: String,
+    pub module_name: String,
+    pub venue: String,
+    pub class_date: i64,
+    pub start_time: i64,
+    pub end_time: i64,
+    /// 课型编码,见 CLASS_TYPES。
+    pub class_type: i64,
+    /// 0 cancelled / 1 conducted / 2 待上(YTBC)。
+    pub class_status: i64,
+    /// 官方考勤是否已签。
+    pub attended: bool,
+    /// 官方签到时刻 YYYYMMDDHHMM,未签为 0。
+    pub attendance_time: i64,
+}
+
+impl StudentClass {
+    /// 课程代码部分(module_key 第一段,如 COMP4082)。
+    pub fn module_code(&self) -> &str {
+        self.module_key.split('_').next().unwrap_or(&self.module_key)
+    }
 }
 
 impl OngoingClass {
@@ -130,11 +223,14 @@ impl OngoingClass {
     pub fn module_code(&self) -> &str {
         self.module_key.split('_').next().unwrap_or(&self.module_key)
     }
-    /// course_type(第二段)与 course_year(第三段),带默认值。
+    /// course_type(第二段)与 course_year(第三段),缺省分别为 AUM 与当前学年。
     pub fn course_type_year(&self) -> (String, String) {
         let parts: Vec<&str> = self.module_key.split('_').collect();
         let ct = parts.get(1).copied().unwrap_or("AUM").to_string();
-        let cy = parts.get(2).copied().unwrap_or("25-26").to_string();
+        let cy = parts
+            .get(2)
+            .map(|s| s.to_string())
+            .unwrap_or_else(current_academic_year);
         (ct, cy)
     }
 }
@@ -402,21 +498,35 @@ impl InstAttClient {
             return Ok(vec![]);
         }
         let res: Value = resp.json().await?;
-        let mut out = vec![];
+        // 上游返回历年全部课程,先按 (courseYear, Module) 收齐
+        let mut all: Vec<(String, Module)> = vec![];
         if let Some(docs) = res["documents"].as_array() {
             for doc in docs {
                 let f = &doc["fields"];
-                let year = sv(f, "courseYear");
                 let id = sv(f, "moduleID");
-                if year == current_year && !id.is_empty() {
-                    out.push(Module {
+                if id.is_empty() {
+                    continue;
+                }
+                all.push((
+                    sv(f, "courseYear"),
+                    Module {
                         module_id: id,
                         module_name: sv(f, "moduleName"),
-                    });
-                }
+                    },
+                ));
             }
         }
-        Ok(out)
+        // 优先当前学年;上游尚未录入当前学年(如开学初)时退回最新学年,避免列表为空
+        let year = if all.iter().any(|(y, _)| y == current_year) {
+            current_year.to_string()
+        } else {
+            all.iter().map(|(y, _)| y.clone()).max().unwrap_or_default()
+        };
+        Ok(all
+            .into_iter()
+            .filter(|(y, _)| *y == year)
+            .map(|(_, m)| m)
+            .collect())
     }
 
     pub async fn get_ongoing_classes(&self) -> anyhow::Result<Vec<OngoingClass>> {
@@ -433,9 +543,65 @@ impl InstAttClient {
                     class_date: iv(f, "classDate"),
                     start_time: iv(f, "startTime"),
                     end_time: iv(f, "endTime"),
+                    students_attended: iv(f, "studentsAttended"),
+                    unlock_user_name: sv(f, "unlockUserName"),
                 });
             }
         }
+        Ok(out)
+    }
+
+    /// 学生某天的课表:runQuery students/{id}/classes where classDate == date,按开始时间排序。
+    pub async fn get_student_classes(
+        &self,
+        id_token: &str,
+        student_id: &str,
+        class_date: i64,
+    ) -> anyhow::Result<Vec<StudentClass>> {
+        let url = format!("{}/students/{}:runQuery", self.firestore_docs(), student_id);
+        let body = json!({"structuredQuery": {
+            "from": [{"collectionId": "classes"}],
+            "where": {"fieldFilter": {
+                "field": {"fieldPath": "classDate"},
+                "op": "EQUAL",
+                "value": {"integerValue": class_date.to_string()}
+            }},
+            "limit": 50
+        }});
+        let res: Value = self
+            .http
+            .post(&url)
+            .bearer_auth(id_token)
+            .json(&body)
+            .send()
+            .await?
+            .json()
+            .await?;
+        if let Some(e) = res.get("error") {
+            return Err(anyhow::anyhow!("runQuery 失败: {e}"));
+        }
+        let mut out = vec![];
+        if let Some(items) = res.as_array() {
+            for item in items {
+                let f = &item["document"]["fields"];
+                if f.is_null() {
+                    continue; // 末尾只有 readTime 的空条目
+                }
+                out.push(StudentClass {
+                    module_key: sv(f, "moduleKey"),
+                    module_name: sv(f, "moduleName"),
+                    venue: sv(f, "venue"),
+                    class_date: iv(f, "classDate"),
+                    start_time: iv(f, "startTime"),
+                    end_time: iv(f, "endTime"),
+                    class_type: iv(f, "classType"),
+                    class_status: iv(f, "classStatus"),
+                    attended: iv(f, "attended") == 1,
+                    attendance_time: iv(f, "attendanceDateTime"),
+                });
+            }
+        }
+        out.sort_by(|a, b| (a.start_time, &a.module_key).cmp(&(b.start_time, &b.module_key)));
         Ok(out)
     }
 
@@ -516,6 +682,18 @@ mod tests {
     }
 
     #[test]
+    fn academic_year_boundaries() {
+        use chrono::NaiveDate;
+        let d = |y, m, d| NaiveDate::from_ymd_opt(y, m, d).unwrap();
+        assert_eq!(academic_year_for(d(2026, 9, 30)), "26-27");
+        assert_eq!(academic_year_for(d(2026, 9, 1)), "26-27");
+        assert_eq!(academic_year_for(d(2026, 8, 31)), "25-26");
+        assert_eq!(academic_year_for(d(2026, 6, 5)), "25-26");
+        assert_eq!(academic_year_for(d(2027, 1, 15)), "26-27");
+        assert_eq!(academic_year_for(d(2099, 10, 1)), "99-00");
+    }
+
+    #[test]
     fn module_key_parsing() {
         let c = OngoingClass {
             module_key: "COMP4082_FML_25-26".into(),
@@ -524,9 +702,77 @@ mod tests {
             class_date: 0,
             start_time: 0,
             end_time: 0,
+            students_attended: 0,
+            unlock_user_name: String::new(),
         };
         assert_eq!(c.module_code(), "COMP4082");
         assert_eq!(c.course_type_year(), ("FML".to_string(), "25-26".to_string()));
+    }
+
+    #[test]
+    fn campus_date_hhmm_and_class_types() {
+        use chrono::TimeZone;
+        let off = chrono::FixedOffset::east_opt(CAMPUS_UTC_OFFSET_HOURS * 3600).unwrap();
+        // UTC 04:56 = 校区 12:56
+        let t = chrono::Utc.with_ymd_and_hms(2026, 9, 30, 4, 56, 0).unwrap().with_timezone(&off);
+        assert_eq!(date_hhmm(&t), (20260930, 1256));
+        // UTC 23:30 → 校区已是次日 07:30
+        let t = chrono::Utc.with_ymd_and_hms(2026, 9, 30, 23, 30, 0).unwrap().with_timezone(&off);
+        assert_eq!(date_hhmm(&t), (20261001, 730));
+        assert_eq!(class_type_label(5), "computing");
+        assert_eq!(class_type_label(0), "lecture");
+        assert_eq!(class_type_label(99), "");
+    }
+
+    #[tokio::test]
+    async fn student_classes_run_query_parsing() {
+        let server = MockServer::start().await;
+        // 上游 runQuery 响应:文档条目 + 末尾一个只含 readTime 的空条目;故意乱序
+        let body = json!([
+            {"document": {"name": "projects/x/databases/(default)/documents/students/12345678/classes/COMP4082_AUM_26-27_20260930_1400_F1A24",
+              "fields": {"moduleKey": {"stringValue": "COMP4082_AUM_26-27"}, "moduleName": {"stringValue": "Autonomous Robotic Systems"},
+                         "venue": {"stringValue": "F1A24"}, "classDate": {"integerValue": "20260930"}, "startTime": {"integerValue": "1400"},
+                         "endTime": {"integerValue": "1600"}, "classType": {"integerValue": "0"}, "classStatus": {"integerValue": "2"},
+                         "attended": {"integerValue": "0"}}}},
+            {"document": {"name": "projects/x/databases/(default)/documents/students/12345678/classes/COMP3041_AUM_26-27_20260930_0900_F1A13",
+              "fields": {"moduleKey": {"stringValue": "COMP3041_AUM_26-27"}, "moduleName": {"stringValue": "Ethics"},
+                         "venue": {"stringValue": "F1A13"}, "classDate": {"integerValue": "20260930"}, "startTime": {"integerValue": "900"},
+                         "endTime": {"integerValue": "1100"}, "classType": {"integerValue": "0"}, "classStatus": {"integerValue": "1"},
+                         "attended": {"integerValue": "1"}, "attendanceDateTime": {"integerValue": "202609300912"}}}},
+            {"readTime": "2026-09-30T04:56:00Z"}
+        ]);
+        Mock::given(method("POST"))
+            .and(path(format!(
+                "/v1/projects/{}/databases/(default)/documents/students/12345678:runQuery",
+                FIREBASE_PROJECT_ID
+            )))
+            .respond_with(ResponseTemplate::new(200).set_body_json(body))
+            .mount(&server)
+            .await;
+        let classes = client_for(&server)
+            .get_student_classes("idtok", "12345678", 20260930)
+            .await
+            .unwrap();
+        assert_eq!(classes.len(), 2);
+        assert_eq!(classes[0].module_code(), "COMP3041", "应按开始时间排序");
+        assert!(classes[0].attended);
+        assert_eq!(classes[0].attendance_time, 202609300912);
+        assert_eq!(classes[1].start_time, 1400);
+        assert!(!classes[1].attended);
+        assert_eq!(classes[1].class_status, 2);
+    }
+
+    #[tokio::test]
+    async fn student_classes_run_query_error_is_err() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(403).set_body_json(
+                json!({"error": {"code": 403, "message": "Missing or insufficient permissions.", "status": "PERMISSION_DENIED"}}),
+            ))
+            .mount(&server)
+            .await;
+        let r = client_for(&server).get_student_classes("idtok", "12345678", 20260930).await;
+        assert!(r.is_err());
     }
 
     #[tokio::test]
@@ -623,6 +869,35 @@ mod tests {
             .unwrap();
         assert_eq!(mods.len(), 1);
         assert_eq!(mods[0].module_id, "COMP4082");
+    }
+
+    #[tokio::test]
+    async fn student_modules_prefers_current_year_else_newest() {
+        let server = MockServer::start().await;
+        // 上游历年课程:24-25 ×1、25-26 ×2、26-27 ×1(同 niubi777 的真实数据形态)
+        let body = json!({"documents": [
+            {"fields": {"courseYear": {"stringValue": "25-26"}, "moduleID": {"stringValue": "COMP2019"}, "moduleName": {"stringValue": "SE Group Project"}}},
+            {"fields": {"courseYear": {"stringValue": "24-25"}, "moduleID": {"stringValue": "COMP1017"}, "moduleName": {"stringValue": "Maths 1"}}},
+            {"fields": {"courseYear": {"stringValue": "26-27"}, "moduleID": {"stringValue": "COMP4082"}, "moduleName": {"stringValue": "Autonomous Robotic Systems"}}},
+            {"fields": {"courseYear": {"stringValue": "25-26"}, "moduleID": {"stringValue": "COMP2025"}, "moduleName": {"stringValue": "HCI"}}}
+        ]});
+        Mock::given(method("GET"))
+            .and(path(format!(
+                "/v1/projects/{}/databases/(default)/documents/students/12345678/modules",
+                FIREBASE_PROJECT_ID
+            )))
+            .respond_with(ResponseTemplate::new(200).set_body_json(body))
+            .mount(&server)
+            .await;
+        let client = client_for(&server);
+
+        // 请求 26-27:只取 26-27 那一门,25-26 的不再混入
+        let mods = client.get_student_modules("idtok", "12345678", "26-27").await.unwrap();
+        assert_eq!(mods.iter().map(|m| m.module_id.as_str()).collect::<Vec<_>>(), vec!["COMP4082"]);
+
+        // 请求一个上游还没有的学年(27-28):退回最新学年 26-27,而不是返回空
+        let mods = client.get_student_modules("idtok", "12345678", "27-28").await.unwrap();
+        assert_eq!(mods.iter().map(|m| m.module_id.as_str()).collect::<Vec<_>>(), vec!["COMP4082"]);
     }
 
     #[tokio::test]

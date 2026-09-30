@@ -140,7 +140,7 @@ pub async fn sync(State(st): State<AppState>, ctx: AuthCtx) -> ApiResult {
     // 课程(保留完整信息以构建 module_info)
     let module_list = st
         .client
-        .get_student_modules(&token, &student_id, "25-26")
+        .get_student_modules(&token, &student_id, &instatt::current_academic_year())
         .await
         .unwrap_or_default();
     let modules: Vec<String> = module_list.iter().map(|m| m.module_id.clone()).collect();

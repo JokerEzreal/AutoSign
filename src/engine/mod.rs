@@ -3,6 +3,7 @@
 
 pub mod billing;
 pub mod instatt;
+pub mod listener;
 pub mod poller;
 pub mod refresher;
 pub mod tokens;
@@ -36,6 +37,8 @@ pub async fn run(pool: PgPool, enc_key: [u8; 32]) -> Arc<Engine> {
     let poll_interval_sec = config_i64(&pool, "poll_interval_sec", 5).await;
     let max_concurrency = config_i64(&pool, "max_concurrency", 50).await.max(1) as usize;
     let jitter_ms_max = config_i64(&pool, "jitter_ms_max", 1500).await.max(0) as u64;
+    // 实时监听 ongoingClasses(1 开 / 0 关);关了就只剩定时轮询
+    let realtime_listen = config_i64(&pool, "realtime_listen", 1).await != 0;
 
     let client = InstAttClient::new();
     let tokens = Arc::new(TokenManager::new(pool.clone(), client.clone(), enc_key));
@@ -50,9 +53,15 @@ pub async fn run(pool: PgPool, enc_key: [u8; 32]) -> Arc<Engine> {
         sem: Arc::new(Semaphore::new(max_concurrency)),
         acct_locks: DashMap::new(),
         inflight: DashMap::new(),
+        wake: tokio::sync::Notify::new(),
     });
 
     tokio::spawn(poller::run_poller(engine.clone()));
     tokio::spawn(refresher::run_refresher(tokens));
+    if realtime_listen {
+        tokio::spawn(listener::run_listener(engine.clone()));
+    } else {
+        tracing::info!("realtime_listen=0,仅定时轮询");
+    }
     engine
 }

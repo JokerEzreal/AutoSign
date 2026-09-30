@@ -28,6 +28,8 @@ pub struct Engine {
     pub sem: Arc<Semaphore>,
     pub acct_locks: DashMap<i64, Arc<Mutex<()>>>,
     pub inflight: DashMap<String, ()>,
+    /// 实时监听发现新解锁时唤醒轮询器,立即跑一轮而不等下个周期。
+    pub wake: tokio::sync::Notify,
 }
 
 /// 候选课程对账号的唯一键(用于去重)。
@@ -49,18 +51,18 @@ impl Engine {
         // 完成即移除 inflight(无论成功失败)
         let _cleanup = InflightGuard { engine: &self, key: &key };
 
+        // 抖动:摊开瞬时爆发。放在拿并发许可之前,睡觉时不占用名额
+        if self.jitter_ms_max > 0 {
+            let ms = rand::thread_rng().gen_range(0..=self.jitter_ms_max);
+            tokio::time::sleep(Duration::from_millis(ms)).await;
+        }
+
         let permit = match self.sem.clone().acquire_owned().await {
             Ok(p) => p,
             Err(_) => return,
         };
         let lock = self.acct_lock(account_id);
         let _guard = lock.lock().await;
-
-        // 抖动:摊开瞬时爆发
-        if self.jitter_ms_max > 0 {
-            let ms = rand::thread_rng().gen_range(0..=self.jitter_ms_max);
-            tokio::time::sleep(Duration::from_millis(ms)).await;
-        }
 
         if let Err(e) = self.try_sign(account_id, &class).await {
             tracing::debug!("[{account_id}] {} 签到处理异常: {e}", class.module_key);

@@ -131,7 +131,7 @@ export default function Dashboard() {
           <div>
             <h3 style={{ margin: 0 }}>课程自动签到</h3>
             <p className="muted" style={{ margin: "6px 0 0" }}>
-              勾选要自动签到的课程后点「保存」即生效;课程解锁时自动签到,成功一次扣 ¥1.00,余额不足则不签。
+              勾选要自动签到的课程后点「保存」即生效;课程解锁时自动签到,成功一次扣 ¥2.00,余额不足则不签。
             </p>
           </div>
           <button className="ghost" onClick={sync} disabled={busy}>

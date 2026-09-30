@@ -4,6 +4,7 @@ import { post } from "./api";
 import Login from "./pages/Login";
 import AdminLogin from "./pages/AdminLogin";
 import Dashboard from "./pages/Dashboard";
+import Classes from "./pages/Classes";
 import Records from "./pages/Records";
 import Transactions from "./pages/Transactions";
 import Accounts from "./pages/admin/Accounts";
@@ -37,6 +38,9 @@ function Layout({ children }: { children: React.ReactNode }) {
           <>
             <NavLink to="/" end className="navlink">
               仪表盘
+            </NavLink>
+            <NavLink to="/classes" className="navlink">
+              课程表
             </NavLink>
             <NavLink to="/records" className="navlink">
               签到记录
@@ -102,6 +106,7 @@ export default function App() {
     <Layout>
       <Routes>
         {hasAccount && <Route path="/" element={<Dashboard />} />}
+        {hasAccount && <Route path="/classes" element={<Classes />} />}
         {hasAccount && <Route path="/records" element={<Records />} />}
         {hasAccount && <Route path="/transactions" element={<Transactions />} />}
         {isAdmin && <Route path="/admin/stats" element={<Stats />} />}

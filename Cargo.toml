@@ -22,6 +22,10 @@ chrono = { version = "0.4", features = ["serde"] }
 rand = "0.8"
 anyhow = "1"
 async-trait = "0.1"
+# Firestore gRPC Listen(实时订阅 ongoingClasses)
+tonic = { version = "0.12", features = ["tls", "tls-webpki-roots"] }
+prost = "0.13"
+tokio-stream = "0.1"
 
 [dev-dependencies]
 wiremock = "0.6"

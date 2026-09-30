@@ -5,7 +5,7 @@ use serde::Serialize;
 use sqlx::PgPool;
 
 use crate::crypto;
-use crate::engine::instatt::{DevicePoll, InstAttClient};
+use crate::engine::instatt::{current_academic_year, DevicePoll, InstAttClient};
 
 #[derive(Debug, Serialize)]
 pub struct StartResp {
@@ -142,7 +142,7 @@ async fn resolve_login(
     };
     let module_list = if !student_id.is_empty() {
         client
-            .get_student_modules(&id_token, &student_id, "25-26")
+            .get_student_modules(&id_token, &student_id, &current_academic_year())
             .await
             .unwrap_or_default()
     } else {

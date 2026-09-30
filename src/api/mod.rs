@@ -2,6 +2,7 @@
 
 pub mod admin;
 pub mod auth_routes;
+pub mod classes;
 pub mod me;
 
 use axum::{
@@ -95,6 +96,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/me/auto-sign", patch(me::set_auto_sign))
         .route("/api/me/modules", patch(me::set_modules))
         .route("/api/me/sync", post(me::sync))
+        .route("/api/me/classes", get(classes::list_classes))
         .route("/api/me/records", get(me::records))
         .route("/api/me/transactions", get(me::transactions))
         .route("/api/venues", get(me::venues))

@@ -21,7 +21,7 @@ function resultBadge(r: string) {
 }
 
 /** 把内部 detail 翻译成用户可读说明 */
-function detailText(detail: string): string {
+export function detailText(detail: string): string {
   if (detail.startsWith("missing_bssid:")) {
     return "暂不支持该教室 " + detail.slice("missing_bssid:".length);
   }
