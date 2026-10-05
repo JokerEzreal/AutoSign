@@ -8,6 +8,8 @@
 
 > 本仓库 crate 名为 `instatt_saas`,线上面板标题为「Instatt 自动签到」。
 
+> **⚠️ 声明:本项目仅供安全研究与学习交流。** 文中涉及的上游接口、配置常量与数据,均来自对公开发行的 InstAtt APK 的逆向分析(见 [10. 逆向来源、安全分析与加固建议](#10-逆向来源安全分析与加固建议))。请勿用于实际代签或任何违反校规、校方服务条款与当地法律的用途;由此产生的一切后果由使用者自负。
+
 ---
 
 ## 目录
@@ -21,7 +23,8 @@
 7. [HTTP API](#7-http-api)
 8. [数据模型](#8-数据模型)
 9. [附属工具与目录](#9-附属工具与目录)
-10. [已知限制与注意事项](#10-已知限制与注意事项)
+10. [逆向来源、安全分析与加固建议](#10-逆向来源安全分析与加固建议)
+11. [已知限制与注意事项](#11-已知限制与注意事项)
 
 ---
 
@@ -156,6 +159,12 @@
 上游按教室 Wi-Fi 的 BSSID 校验位置。本系统**只能签已采集 BSSID 的教室**(`src/engine/instatt.rs` 中的 `VENUE_BSSIDS`,目前 22 条,部分相邻教室共用同一 AP),以及上游标记 `ignoreWifi=true` 的 5 个教室(`DA05 / DA07 / NB03 / NOLOC / ONLINE`,任意 BSSID 可签)。其他教室会记一条 `failed / missing_bssid`,不扣费。
 
 新教室用 `tools/wifi-bssid` 采集后追加到 `VENUE_BSSIDS` 即可;面板「支持的教室」与 `GET /api/venues` 都从这张表读。
+
+### 2.6 信息来源:逆向 InstAtt APK
+
+上面用到的全部上游细节 —— Firebase 项目与 API key、Azure 租户/客户端 ID、各云函数名(`signAttendance`、`userLogin`、`unlock` …)、`signAttendance` 的请求字段、以及「按教室 BSSID 校验位置、`ignoreWifi` 可绕过」这套逻辑 —— 都来自对公开发行的 InstAtt 安卓 APK(`instatt.instatt`,v1.43)的反编译,留存在本仓库 `app/` 目录。随后用从 APK 取得的配置,直接查询上游公开可读的 Firestore 集合,整理成 [`InstAtt_Database_Info.md`](InstAtt_Database_Info.md)。
+
+注意:教室 BSSID **不在** APK 里,也无法从 Firestore 读到(`rooms` 文档不含 BSSID),只能到各教室现场用 `tools/wifi-bssid` 实测采集。该 APK 为发布版但未做任何混淆或加固,逆向门槛极低,详见 [10. 逆向来源、安全分析与加固建议](#10-逆向来源安全分析与加固建议)。
 
 ---
 
@@ -382,7 +391,56 @@ Windows 下记录当前所连 Wi-Fi BSSID 的小工具,零依赖(只调 `netsh w
 
 ---
 
-## 10. 已知限制与注意事项
+## 10. 逆向来源、安全分析与加固建议
+
+> 本节均为对**公开发行、可自由下载安装**的 InstAtt APK 的静态分析结论,目的是交代本项目数据的来历,并从防御角度给出改进建议。未涉及任何对上游服务器的入侵或越权操作。
+
+### 10.1 逆向过程
+
+1. 反编译 InstAtt 安卓 APK(`instatt.instatt`,versionName 1.43),得到可读 Java 源码,留存于 `app/`(`instatt` 包下 109 个业务类)。
+2. 从中提取客户端配置与协议:Firebase 项目/密钥、Azure 租户与客户端 ID、云函数名清单、`signAttendance` 等请求的字段结构,以及位置校验(BSSID / `ignoreWifi`)逻辑。
+3. 用这些配置直接请求上游**公开可读**的 Firestore 集合(`global/*`、`rooms/*`、`ongoingClasses`),把字段含义、编码表与签到请求格式整理成 [`InstAtt_Database_Info.md`](InstAtt_Database_Info.md)。
+4. 把上述逻辑用 Rust 重写为本服务的上游客户端(`src/engine/instatt.rs`)。
+
+### 10.2 发现:APK 未混淆、未加密、未加壳
+
+发布版(`BuildConfig.BUILD_TYPE = "release"`、`DEBUG = false`)直接反编译即得到带原始包名/类名/字段名的 Java,几乎无逆向门槛:
+
+| 观察 | 证据(本仓库 `app/`) |
+|---|---|
+| 类名、方法名、字段名全部保留,无 `a/b/c` 混淆 | `instatt` 包下 109 个有意义命名的类,如 `LecturerHomeFragment`、`WifiConnectionReceiver`、`FirebaseFunctionName` |
+| 云函数名明文硬编码 | `FirebaseFunctionName.java`:`signAttendance` / `userLogin` / `unlock` / `lock` / `createClass` / `modifyAttendanceAdmin` … |
+| Firebase 密钥明文 | `res/values/strings.xml` 的 `google_api_key`、`project_id`、`firebase_database_url` |
+| Azure 身份常量明文 | `AzureParameters.java`(租户 ID、客户端 ID) |
+| 位置校验逻辑可读、可改 | `GlobalStatic`、`CustomWifi`、`WifiConnectionReceiver` 中的 BSSID 比对与 `ignoreWifi` 开关 |
+
+「未加密 / 未加壳」是据此推断:DEX 能被直接反编译为带原始标识符的源码、且密钥与端点以明文出现,说明既无字符串加密也无加壳保护(未另跑专门的脱壳检测)。
+
+### 10.3 由此暴露的风险面
+
+- **签到位置校验在客户端**:`signAttendance` 直接信任客户端上报的 `MACaddress`(教室 BSSID)、`deviceUID` 等字段。知道字段格式与一个合法 BSSID,即可在任意网络下构造成功签到 —— 本项目与 `MyXposed/` 模块都建立在这一点上。
+- **凭据与端点全暴露**:Firebase API key、项目 ID、Azure 租户/客户端 ID 明文可取,配合登录流程即可在校外完成完整认证链。
+- **公开可读的 Firestore**:`ongoingClasses` 实时暴露全校哪些课已解锁、各教室 `ignoreWifi` 配置等,无需认证即可抓取(见 [`InstAtt_Database_Info.md`](InstAtt_Database_Info.md) 第 7 节「安全漏洞总结」)。
+- **端侧无完整性保护**:无混淆、无 root/hook 检测、无证书绑定,Xposed 一类运行时插桩可随意改写 `ignoreWifi`、伪造 BSSID、自动点击签到。
+
+### 10.4 给上游的加固建议
+
+1. **把考勤决策移到服务端**:不信任客户端上报的 BSSID / 位置;改用服务端可独立验证的信号(如一次性解锁随机数、服务端侧观测到的网络、与课节绑定的限时 nonce),`ignoreWifi` 不应是客户端可改的全局变量。
+2. **收紧 Firestore 安全规则**:按最小权限暴露,`ongoingClasses` / `rooms` / `global` 不应对未认证客户端整体开放。
+3. **启用代码混淆与字符串加密**:R8/ProGuard(或商用加固)+ 资源/字符串加密,显著抬高逆向成本。
+4. **加运行时完整性与反注入**:root / 模拟器 / 调试器 / Xposed 检测、证书绑定(certificate pinning)、防抓包与重打包签名校验。
+5. **接入 Firebase App Check**,并对 API key 做来源/应用限制,阻断脱离正规 App 的直接调用。
+6. **服务端风控**:对同一 `deviceUID` 复用、异常签到频率、地理/网络异常做检测与限流。
+
+> 这些建议针对的是上游「**信任客户端上报**」这一根因;一旦落地,本服务的签到路径即失效。
+
+### 10.5 仅供学习与免责
+
+本项目(含服务端、`MyXposed/` 模块与各逆向资料)**仅用于安全研究、协议分析与学习交流**,用以展示「客户端侧校验不可信」这一经典问题。请勿用于真实代签,或任何违反校规、校方服务条款及当地法律的场景。将其用于生产即是替学生向校方考勤系统提交虚假出勤,风险与责任由运营者和使用者自行承担,作者与本仓库不对由此产生的任何后果负责。
+
+---
+
+## 11. 已知限制与注意事项
 
 - **教室覆盖有限**:只有 `VENUE_BSSIDS` 与免 Wi-Fi 教室可签,其余教室记失败、不扣费;需要持续用采集工具补表。
 - **引擎参数重启生效**:`system_config` 只在进程启动时读取。
@@ -393,4 +451,4 @@ Windows 下记录当前所连 Wi-Fi BSSID 的小工具,零依赖(只调 `netsh w
 - **前端单价文案写死**:仪表盘提示「成功一次扣 ¥2.00」,而 seed 默认单价是 100 分;改单价时记得同步 `Dashboard.tsx` 的文案。
 - **换 `ENCRYPTION_KEY` 等于清空凭据**:库里所有 refresh token 与设备号都将无法解密,全员需重新登录。
 - **安全**:超管初始密码务必在面板尽快修改;`JWT_SECRET`、`ENCRYPTION_KEY`、`.deploy.env` 不要进仓库;生产务必开 HTTPS 并把 `COOKIE_SECURE` 设为 `true`。
-- **合规**:本系统替学生向校方考勤系统提交签到,并以采集到的教室 BSSID 通过上游的位置校验,与学校规章直接冲突,相关账号可能被处理。运营与使用风险由运营方和使用者自行承担,本仓库仅为技术实现。
+- **合规与免责**:本系统替学生提交签到、以实测 BSSID 通过上游位置校验,与校规直接冲突,相关账号可能被处理。本项目仅供学习研究,完整说明见 [10.5 仅供学习与免责](#105-仅供学习与免责)。
