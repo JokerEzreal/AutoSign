@@ -156,15 +156,15 @@
 
 ### 2.5 教室与 BSSID
 
-上游按教室 Wi-Fi 的 BSSID 校验位置。本系统**只能签已采集 BSSID 的教室**(`src/engine/instatt.rs` 中的 `VENUE_BSSIDS`,目前 22 条,部分相邻教室共用同一 AP),以及上游标记 `ignoreWifi=true` 的 5 个教室(`DA05 / DA07 / NB03 / NOLOC / ONLINE`,任意 BSSID 可签)。其他教室会记一条 `failed / missing_bssid`,不扣费。
+上游**服务端**按教室的合法 BSSID 名单校验签到请求里提交的 `MACaddress`:名单存在 Firestore、客户端读不到,匹配才算到场(云函数返回 200),否则 403。因此本系统**只能签已采集 BSSID 的教室**(`src/engine/instatt.rs` 中的 `VENUE_BSSIDS`,目前 22 条,部分相邻教室共用同一 AP),以及上游标记 `ignoreWifi=true` 的 5 个教室(`DA05 / DA07 / NB03 / NOLOC / ONLINE`,任意 BSSID 可签)。其他教室会记一条 `failed / missing_bssid`,不扣费。
 
 新教室用 `tools/wifi-bssid` 采集后追加到 `VENUE_BSSIDS` 即可;面板「支持的教室」与 `GET /api/venues` 都从这张表读。
 
 ### 2.6 信息来源:逆向 InstAtt APK
 
-上面用到的全部上游细节 —— Firebase 项目与 API key、Azure 租户/客户端 ID、各云函数名(`signAttendance`、`userLogin`、`unlock` …)、`signAttendance` 的请求字段、以及「按教室 BSSID 校验位置、`ignoreWifi` 可绕过」这套逻辑 —— 都来自对公开发行的 InstAtt 安卓 APK(`instatt.instatt`,v1.43)的反编译,留存在本仓库 `app/` 目录。随后用从 APK 取得的配置,直接查询上游公开可读的 Firestore 集合,整理成 [`InstAtt_Database_Info.md`](InstAtt_Database_Info.md)。
+上面用到的全部上游细节 —— Firebase 项目与 API key、Azure 租户/客户端 ID、各云函数名(`signAttendance`、`userLogin`、`unlock` …)、`signAttendance` 的请求字段、以及客户端如何上报所连 BSSID(`MACaddress`)与 `ignoreWifi` 处理 —— 都来自对公开发行的 InstAtt 安卓 APK(`instatt.instatt`,v1.43)的反编译,留存在本仓库 `app/` 目录。随后用从 APK 取得的配置,直接查询上游公开可读的 Firestore 集合,整理成 [`InstAtt_Database_Info.md`](InstAtt_Database_Info.md)。
 
-注意:教室 BSSID **不在** APK 里,也无法从 Firestore 读到(`rooms` 文档不含 BSSID),只能到各教室现场用 `tools/wifi-bssid` 实测采集。该 APK 为发布版但未做任何混淆或加固,逆向门槛极低,详见 [10. 逆向来源、安全分析与加固建议](#10-逆向来源安全分析与加固建议)。
+注意:教室 BSSID **不在** APK 里;校验用的合法 BSSID 名单在服务端(存于 Firestore,但学生 token 读不到、也不在公开的 `rooms` 文档里 —— `rooms` 只有 `filterStrength` 与 `ignoreWifi`),所以只能到各教室现场用 `tools/wifi-bssid` 实测采集。该 APK 为发布版但未做任何混淆或加固,逆向门槛极低,详见 [10. 逆向来源、安全分析与加固建议](#10-逆向来源安全分析与加固建议)。
 
 ---
 
@@ -398,7 +398,7 @@ Windows 下记录当前所连 Wi-Fi BSSID 的小工具,零依赖(只调 `netsh w
 ### 10.1 逆向过程
 
 1. 反编译 InstAtt 安卓 APK(`instatt.instatt`,versionName 1.43),得到可读 Java 源码,留存于 `app/`(`instatt` 包下 109 个业务类)。
-2. 从中提取客户端配置与协议:Firebase 项目/密钥、Azure 租户与客户端 ID、云函数名清单、`signAttendance` 等请求的字段结构,以及位置校验(BSSID / `ignoreWifi`)逻辑。
+2. 从中提取客户端配置与协议:Firebase 项目/密钥、Azure 租户与客户端 ID、云函数名清单、`signAttendance` 等请求的字段结构,以及客户端上报所连 BSSID(`MACaddress`)与 `ignoreWifi` 的处理。
 3. 用这些配置直接请求上游**公开可读**的 Firestore 集合(`global/*`、`rooms/*`、`ongoingClasses`),把字段含义、编码表与签到请求格式整理成 [`InstAtt_Database_Info.md`](InstAtt_Database_Info.md)。
 4. 把上述逻辑用 Rust 重写为本服务的上游客户端(`src/engine/instatt.rs`)。
 
@@ -412,20 +412,20 @@ Windows 下记录当前所连 Wi-Fi BSSID 的小工具,零依赖(只调 `netsh w
 | 云函数名明文硬编码 | `FirebaseFunctionName.java`:`signAttendance` / `userLogin` / `unlock` / `lock` / `createClass` / `modifyAttendanceAdmin` … |
 | Firebase 密钥明文 | `res/values/strings.xml` 的 `google_api_key`、`project_id`、`firebase_database_url` |
 | Azure 身份常量明文 | `AzureParameters.java`(租户 ID、客户端 ID) |
-| 位置校验逻辑可读、可改 | `GlobalStatic`、`CustomWifi`、`WifiConnectionReceiver` 中的 BSSID 比对与 `ignoreWifi` 开关 |
+| 客户端 Wi-Fi 采集与预检逻辑可读、可改 | `GlobalStatic`、`CustomWifi`、`WifiConnectionReceiver` 中读取所连 BSSID 与 `ignoreWifi` 开关(最终校验在服务端) |
 
 「未加密 / 未加壳」是据此推断:DEX 能被直接反编译为带原始标识符的源码、且密钥与端点以明文出现,说明既无字符串加密也无加壳保护(未另跑专门的脱壳检测)。
 
 ### 10.3 由此暴露的风险面
 
-- **签到位置校验在客户端**:`signAttendance` 直接信任客户端上报的 `MACaddress`(教室 BSSID)、`deviceUID` 等字段。知道字段格式与一个合法 BSSID,即可在任意网络下构造成功签到 —— 本项目与 `MyXposed/` 模块都建立在这一点上。
+- **服务端校验的是客户端自报的 BSSID,可伪造、可重放**:位置校验确实在服务端 —— 云函数 `signAttendance` 把请求里的 `MACaddress` 与 Firestore 中该教室的合法 BSSID 名单比对,匹配才成功(200),否则返回 403「BSSID验证失败」。但它比对的是**客户端自己填进请求的那个值**,服务端无从确认设备真的连着那个 AP。于是只要现场采集到某教室的一个合法 BSSID(名单客户端读不到,但到场连一次网即可得),之后便能在任意网络、任意位置把它填进请求重放,稳定通过校验 —— 本项目与 `MyXposed/` 模块都建立在这一点上。
 - **凭据与端点全暴露**:Firebase API key、项目 ID、Azure 租户/客户端 ID 明文可取,配合登录流程即可在校外完成完整认证链。
 - **公开可读的 Firestore**:`ongoingClasses` 实时暴露全校哪些课已解锁、各教室 `ignoreWifi` 配置等,无需认证即可抓取(见 [`InstAtt_Database_Info.md`](InstAtt_Database_Info.md) 第 7 节「安全漏洞总结」)。
 - **端侧无完整性保护**:无混淆、无 root/hook 检测、无证书绑定,Xposed 一类运行时插桩可随意改写 `ignoreWifi`、伪造 BSSID、自动点击签到。
 
 ### 10.4 给上游的加固建议
 
-1. **把考勤决策移到服务端**:不信任客户端上报的 BSSID / 位置;改用服务端可独立验证的信号(如一次性解锁随机数、服务端侧观测到的网络、与课节绑定的限时 nonce),`ignoreWifi` 不应是客户端可改的全局变量。
+1. **不要把客户端自报的 BSSID 当作到场证明**:校验虽在服务端,但它信的是请求里由客户端填写的 `MACaddress`。应改用服务端能独立观测、客户端无法伪造的信号(如老师端一次性解锁随机数、服务端侧观测到的接入网络、与课节绑定的限时 nonce),而不是让学生设备自报连了哪个 AP。
 2. **收紧 Firestore 安全规则**:按最小权限暴露,`ongoingClasses` / `rooms` / `global` 不应对未认证客户端整体开放。
 3. **启用代码混淆与字符串加密**:R8/ProGuard(或商用加固)+ 资源/字符串加密,显著抬高逆向成本。
 4. **加运行时完整性与反注入**:root / 模拟器 / 调试器 / Xposed 检测、证书绑定(certificate pinning)、防抓包与重打包签名校验。
@@ -436,7 +436,7 @@ Windows 下记录当前所连 Wi-Fi BSSID 的小工具,零依赖(只调 `netsh w
 
 ### 10.5 仅供学习与免责
 
-本项目(含服务端、`MyXposed/` 模块与各逆向资料)**仅用于安全研究、协议分析与学习交流**,用以展示「客户端侧校验不可信」这一经典问题。请勿用于真实代签,或任何违反校规、校方服务条款及当地法律的场景。将其用于生产即是替学生向校方考勤系统提交虚假出勤,风险与责任由运营者和使用者自行承担,作者与本仓库不对由此产生的任何后果负责。
+本项目(含服务端、`MyXposed/` 模块与各逆向资料)**仅用于安全研究、协议分析与学习交流**,用以展示「服务端轻信客户端自报数据(如所连 BSSID)」这一经典问题。请勿用于真实代签,或任何违反校规、校方服务条款及当地法律的场景。将其用于生产即是替学生向校方考勤系统提交虚假出勤,风险与责任由运营者和使用者自行承担,作者与本仓库不对由此产生的任何后果负责。
 
 ---
 
