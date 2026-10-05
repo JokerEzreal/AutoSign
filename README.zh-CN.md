@@ -6,7 +6,7 @@
 
 - 后端:Rust(Axum + Tokio + sqlx)+ PostgreSQL,单二进制,自带 SPA 静态托管
 - 前端:React 18 + Vite + TypeScript 单页应用
-- 配套:Windows 教室 BSSID 采集工具、无头浏览器辅助登录 worker、上游 App 逆向资料
+- 配套:Windows 教室 BSSID 采集工具、上游 App 逆向资料
 
 > 本仓库 crate 名为 `instatt_saas`,线上面板标题为「Instatt 自动签到」。
 
@@ -72,13 +72,12 @@
   → upsert accounts                 按 account_name;本次没取到设备/课程时保留旧值
 ```
 
-后端提供三种拿到 Azure token 的方式:
+后端提供两种拿到 Azure token 的方式:
 
 | 方式 | 接口 | 说明 |
 |---|---|---|
-| **辅助登录**(当前登录页使用) | `POST /api/auth/assisted/start` → `GET /api/auth/assisted/poll` | 服务端拉起 Playwright 无头浏览器 worker(`tools/assisted_login.py`)替用户走授权码登录,把 MFA「数字匹配」的数字回传给页面;用 App 自带的 `https://localhost` 回调截获授权码。密码只经 stdin 传给 worker,不落盘、不进 argv |
+| **设备码**(Device Code,登录页使用) | `POST /api/auth/device/start` → `GET /api/auth/device/poll` | 标准微软设备码流程,会话落 `device_code_sessions`。注意:部分租户会封禁该流程(AADSTS 7000218),此时以账号密码登录兜底 |
 | **账号密码直登**(ROPC) | `POST /api/auth/password/login` | 服务端直接用账号密码换 token。账号可只填前缀,自动补 `@nottingham.edu.my`。**开了 MFA 的账号会失败** |
-| **设备码**(Device Code) | `POST /api/auth/device/start` → `GET /api/auth/device/poll` | 标准微软设备码流程,会话落 `device_code_sessions`。代码注释记录该流程已被租户封禁(AADSTS 7000218),登录页因此改用辅助登录 |
 
 登录成功后签发 HS256 JWT,放在 `session` cookie 里(HttpOnly、SameSite=Strict、30 天;`COOKIE_SECURE=true` 时加 Secure)。每次请求都从数据库重读角色,提权/降权立即生效。
 
@@ -180,7 +179,7 @@
 │  ├─ state.rs / models.rs           共享状态、sqlx 行模型
 │  ├─ crypto.rs                      AES-256-GCM 字段加密(12 字节 nonce ‖ 密文)
 │  ├─ db/                            连接池 + 嵌入式迁移;seed 超管与默认配置
-│  ├─ auth/                          device(设备码 / ROPC / 建号链)、assisted(辅助登录)、
+│  ├─ auth/                          device(设备码 / ROPC / 建号链)、
 │  │                                 jwt、password(argon2)、middleware(角色提取器)
 │  ├─ api/                           路由装配、auth_routes、me、classes、admin
 │  └─ engine/                        instatt(上游客户端)、listener、poller、worker、
@@ -191,7 +190,6 @@
 ├─ deploy/                           systemd unit、nginx 配置、服务器部署说明
 ├─ scripts/                          sync.py(打包上传源码到服务器)、rexec.py(远程执行命令)
 ├─ tools/
-│  ├─ assisted_login.py              辅助登录 worker(Playwright,服务器上运行)
 │  └─ wifi-bssid/                    教室 BSSID 采集工具(Rust,Windows;附 Python 版)
 ├─ docs/superpowers/                 2026-06-05 的设计文档与实现计划
 ├─ InstAtt_Database_Info.md          上游 Firestore 公开数据整理(集合权限、字段含义、签到请求格式)
@@ -291,17 +289,6 @@ python scripts/rexec.py "cargo build --release && cd web && npm run build && cd 
 
 两个脚本依赖 `paramiko`,连接信息读自仓库根目录的 `.deploy.env`(`HOST / USER / PASS / REMOTE_DIR`,已 gitignore)。
 
-### 辅助登录的服务器依赖
-
-辅助登录在服务端拉起无头浏览器,路径写死在 `src/auth/assisted.rs` 与 `tools/assisted_login.py`:
-
-- Python 虚拟环境 `/opt/pwlogin`,需安装 `playwright`(含 chromium)与 `cryptography`
-- worker 脚本 `/opt/instatt_saas/tools/assisted_login.py`,从 `/opt/instatt_saas/.env` 读 `ENCRYPTION_KEY`
-- 状态目录 `/tmp/assisted/`,每次登录一个 `<session_id>.json`,成功或失败后由后端删除
-- 并发上限 5 个 worker;等待用户在 Authenticator 批准最长 180 秒,前端轮询最长 200 秒
-
-没有这套环境时 `/api/auth/assisted/start` 返回 503,设备码与 ROPC 两条接口不受影响。
-
 ---
 
 ## 7. HTTP API
@@ -311,8 +298,6 @@ python scripts/rexec.py "cargo build --release && cd web && npm run build && cd 
 | 方法 路径 | 权限 | 说明 |
 |---|---|---|
 | `GET /api/health` | 公开 | 存活检查 |
-| `POST /api/auth/assisted/start` | 公开 | `{username, password}` → `{session_id}` |
-| `GET /api/auth/assisted/poll?id=` | 公开 | `pending` / `mfa{number}` / `done`(下发 cookie)/ `failed{error}` |
 | `POST /api/auth/password/login` | 公开 | `{username, password}`,ROPC 直登 |
 | `POST /api/auth/device/start` | 公开 | → `{session_id, user_code, verification_uri, interval, expires_in}` |
 | `GET /api/auth/device/poll?id=` | 公开 | `pending` / `declined` / `expired` / `done` |
@@ -366,10 +351,6 @@ python scripts/rexec.py "cargo build --release && cd web && npm run build && cd 
 ### tools/wifi-bssid
 
 Windows 下记录当前所连 Wi-Fi BSSID 的小工具,零依赖(只调 `netsh wlan`),用于让同学在教室里采集 AP 地址。输出 `bssid_records.csv`,并打印可直接粘贴进 `VENUE_BSSIDS` 的一行。附 Python 版应对 Windows 11 24H2 的定位权限问题。用法与常见问题见 [`tools/wifi-bssid/README.md`](tools/wifi-bssid/README.md)。
-
-### tools/assisted_login.py
-
-辅助登录 worker,见 [6. 部署](#6-部署)。stdin 读一行 JSON,输出状态文件;拿到的 Azure token 用服务器 `ENCRYPTION_KEY` 加密后再写盘。
 
 ### app/(含根目录的 build.gradle / settings.gradle)
 
@@ -449,9 +430,7 @@ Windows 下记录当前所连 Wi-Fi BSSID 的小工具,零依赖(只调 `netsh w
 - **教室覆盖有限**:只有 `VENUE_BSSIDS` 与免 Wi-Fi 教室可签,其余教室记失败、不扣费;需要持续用采集工具补表。
 - **引擎参数重启生效**:`system_config` 只在进程启动时读取。
 - **每日刷新首轮在启动 24 小时后**:刷新器先 sleep 再跑,重启后前 24 小时只依赖按需刷新。
-- **辅助登录绑定服务器路径,仅 Linux**:见 [6. 部署](#6-部署);本地开发机上该接口不可用。
-- **ROPC 不支持 MFA**:账号开了 MFA 或条件访问会失败,应走辅助登录。
-- **登录页目前只暴露辅助登录**:设备码与 ROPC 接口仍在后端,但 `web/src/pages/Login.tsx` 没有入口。
+- **ROPC 不支持 MFA**:账号开了 MFA 或条件访问会失败,应改用设备码登录。
 - **前端单价文案写死**:仪表盘提示「成功一次扣 ¥2.00」,而 seed 默认单价是 100 分;改单价时记得同步 `Dashboard.tsx` 的文案。
 - **换 `ENCRYPTION_KEY` 等于清空凭据**:库里所有 refresh token 与设备号都将无法解密,全员需重新登录。
 - **安全**:超管初始密码务必在面板尽快修改;`JWT_SECRET`、`ENCRYPTION_KEY`、`.deploy.env` 不要进仓库;生产务必开 HTTPS 并把 `COOKIE_SECURE` 设为 `true`。
