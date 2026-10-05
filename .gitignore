@@ -16,3 +16,13 @@ auto_sign_daemon.py
 auto_sign_daemon_en.py
 offline_sign.py
 offline_sign_en.py
+
+# 不纳入公开仓库(公开前防 `git add -A` 误吸):
+#   反编译的上游 InstAtt APK 工程(含其根 gradle 文件)
+/app/
+/build.gradle
+/settings.gradle
+#   本地 Claude 配置与命令历史
+/.claude/
+#   内嵌的独立子仓库(已单独发布为 JokerEzreal/InstAttPlugin)
+/MyXposed/
