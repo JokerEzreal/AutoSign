@@ -6,7 +6,7 @@ An automatic attendance sign-in service for **InstAtt**, the attendance system o
 
 - Backend: Rust (Axum + Tokio + sqlx) + PostgreSQL, a single binary that also serves the SPA
 - Frontend: React 18 + Vite + TypeScript single-page app
-- Bundled: a Windows classroom-BSSID collector, a headless-browser assisted-login worker, and the upstream app's reverse-engineering material
+- Bundled: a Windows classroom-BSSID collector and the upstream app's reverse-engineering material
 
 > The crate is named `instatt_saas`; the live panel is titled "Instatt 自动签到".
 
@@ -72,13 +72,12 @@ School account (Azure AD)
   → upsert accounts                  keyed by account_name; keeps old device/modules if this run fetched none
 ```
 
-The backend offers three ways to obtain the Azure token:
+The backend offers two ways to obtain the Azure token:
 
 | Method | Endpoints | Notes |
 |---|---|---|
-| **Assisted login** (used by the current login page) | `POST /api/auth/assisted/start` → `GET /api/auth/assisted/poll` | The server spawns a Playwright headless-browser worker (`tools/assisted_login.py`) that drives the authorization-code login for the user and relays the MFA "number matching" digits back to the page; the authorization code is captured via the app's own `https://localhost` redirect. The password is passed to the worker over stdin only, never written to disk or argv |
+| **Device Code** (used by the login page) | `POST /api/auth/device/start` → `GET /api/auth/device/poll` | The standard Microsoft device-code flow; the session is stored in `device_code_sessions`. Note: some tenants block this flow (AADSTS 7000218), in which case password login is the fallback |
 | **Direct password login** (ROPC) | `POST /api/auth/password/login` | The server exchanges username+password for the token directly. The username may be just the prefix; `@nottingham.edu.my` is appended automatically. **Accounts with MFA enabled will fail** |
-| **Device Code** | `POST /api/auth/device/start` → `GET /api/auth/device/poll` | The standard Microsoft device-code flow; the session is stored in `device_code_sessions`. A code comment records that this flow was blocked by the tenant (AADSTS 7000218), which is why the login page switched to assisted login |
 
 On success the backend issues an HS256 JWT in the `session` cookie (HttpOnly, SameSite=Strict, 30 days; `Secure` is added when `COOKIE_SECURE=true`). Each request re-reads the role from the database, so promotion/demotion takes effect immediately.
 
@@ -179,7 +178,7 @@ Note: venue BSSIDs are **not** in the APK; the allowed-BSSID list used for valid
 │  ├─ state.rs / models.rs           shared state, sqlx row models
 │  ├─ crypto.rs                      AES-256-GCM field encryption (12-byte nonce ‖ ciphertext)
 │  ├─ db/                            connection pool + embedded migrations; seed superadmin and default config
-│  ├─ auth/                          device (device-code / ROPC / account-creation chain), assisted (assisted login),
+│  ├─ auth/                          device (device-code / ROPC / account-creation chain),
 │  │                                 jwt, password (argon2), middleware (role extractors)
 │  ├─ api/                           router wiring, auth_routes, me, classes, admin
 │  └─ engine/                        instatt (upstream client), listener, poller, worker,
@@ -190,7 +189,6 @@ Note: venue BSSIDs are **not** in the APK; the allowed-BSSID list used for valid
 ├─ deploy/                           systemd unit, nginx config, server deployment notes
 ├─ scripts/                          sync.py (package + upload source to the server), rexec.py (run remote commands)
 ├─ tools/
-│  ├─ assisted_login.py              assisted-login worker (Playwright, runs on the server)
 │  └─ wifi-bssid/                    classroom BSSID collector (Rust, Windows; Python version included)
 ├─ docs/superpowers/                 the 2026-06-05 design doc and implementation plan
 ├─ InstAtt_Database_Info.md          upstream Firestore public-data write-up (collection access, field meanings, sign-in request format)
@@ -290,17 +288,6 @@ python scripts/rexec.py "cargo build --release && cd web && npm run build && cd 
 
 Both scripts depend on `paramiko` and read connection details from `.deploy.env` at the repo root (`HOST / USER / PASS / REMOTE_DIR`, gitignored).
 
-### Server dependencies for assisted login
-
-Assisted login spawns a headless browser on the server; the paths are hard-coded in `src/auth/assisted.rs` and `tools/assisted_login.py`:
-
-- A Python virtualenv at `/opt/pwlogin` with `playwright` (including chromium) and `cryptography` installed
-- The worker script `/opt/instatt_saas/tools/assisted_login.py`, which reads `ENCRYPTION_KEY` from `/opt/instatt_saas/.env`
-- The status directory `/tmp/assisted/`, one `<session_id>.json` per login, deleted by the backend on success or failure
-- A cap of 5 concurrent workers; it waits up to 180 seconds for the user to approve in Authenticator, and the frontend polls for up to 200 seconds
-
-Without this setup, `/api/auth/assisted/start` returns 503; the device-code and ROPC endpoints are unaffected.
-
 ---
 
 ## 7. HTTP API
@@ -310,8 +297,6 @@ All endpoints return JSON; errors are uniformly `{"error": "..."}`. The `page` p
 | Method Path | Access | Notes |
 |---|---|---|
 | `GET /api/health` | public | Liveness check |
-| `POST /api/auth/assisted/start` | public | `{username, password}` → `{session_id}` |
-| `GET /api/auth/assisted/poll?id=` | public | `pending` / `mfa{number}` / `done` (sets cookie) / `failed{error}` |
 | `POST /api/auth/password/login` | public | `{username, password}`, ROPC direct login |
 | `POST /api/auth/device/start` | public | → `{session_id, user_code, verification_uri, interval, expires_in}` |
 | `GET /api/auth/device/poll?id=` | public | `pending` / `declined` / `expired` / `done` |
@@ -365,10 +350,6 @@ Migration files live in `migrations/` and run automatically at startup via `sqlx
 ### tools/wifi-bssid
 
 A small Windows tool that records the currently connected Wi-Fi BSSID with zero dependencies (it only calls `netsh wlan`), so helpers can survey AP addresses in classrooms. It writes `bssid_records.csv` and prints a line that can be pasted straight into `VENUE_BSSIDS`. A Python version is included to work around the Windows 11 24H2 location-permission issue. Usage and FAQ are in [`tools/wifi-bssid/README.md`](tools/wifi-bssid/README.md).
-
-### tools/assisted_login.py
-
-The assisted-login worker, see [6. Deployment](#6-deployment). It reads one line of JSON from stdin and writes a status file; the Azure token it obtains is encrypted with the server's `ENCRYPTION_KEY` before being written to disk.
 
 ### app/ (with the root build.gradle / settings.gradle)
 
@@ -448,9 +429,7 @@ This project (including the server, the `MyXposed/` module, and all reverse-engi
 - **Limited venue coverage**: only venues in `VENUE_BSSIDS` plus the Wi-Fi-free ones can be signed; the rest are recorded as failed and not charged, so the table needs ongoing collection.
 - **Engine parameters apply on restart**: `system_config` is read only at process startup.
 - **The first daily refresh is 24h after startup**: the refresher sleeps before its first run, so for the first 24h after a restart it relies on on-demand refresh only.
-- **Assisted login is bound to server paths and Linux-only**: see [6. Deployment](#6-deployment); the endpoint is unavailable on a local dev machine.
-- **ROPC does not support MFA**: accounts with MFA or conditional access will fail and should use assisted login.
-- **The login page currently exposes only assisted login**: the device-code and ROPC endpoints still exist in the backend, but `web/src/pages/Login.tsx` has no entry point for them.
+- **ROPC does not support MFA**: accounts with MFA or conditional access will fail and should use the device-code flow instead.
 - **A price string is hard-coded in the frontend**: the dashboard says "¥2.00 per success", while the seed default price is 100 cents; when changing the price, remember to update the copy in `Dashboard.tsx`.
 - **Changing `ENCRYPTION_KEY` effectively wipes credentials**: all refresh tokens and device IDs in the DB become undecryptable and everyone must log in again.
 - **Security**: change the superadmin's initial password in the panel as soon as possible; keep `JWT_SECRET`, `ENCRYPTION_KEY`, and `.deploy.env` out of the repo; always enable HTTPS in production and set `COOKIE_SECURE` to `true`.
