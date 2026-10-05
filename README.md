@@ -455,3 +455,22 @@ This project (including the server, the `MyXposed/` module, and all reverse-engi
 - **Changing `ENCRYPTION_KEY` effectively wipes credentials**: all refresh tokens and device IDs in the DB become undecryptable and everyone must log in again.
 - **Security**: change the superadmin's initial password in the panel as soon as possible; keep `JWT_SECRET`, `ENCRYPTION_KEY`, and `.deploy.env` out of the repo; always enable HTTPS in production and set `COOKIE_SECURE` to `true`.
 - **Compliance and disclaimer**: this system submits attendance on a student's behalf and passes the upstream location check with a surveyed BSSID, in direct conflict with school rules, and the accounts involved may be penalized. This project is for study and research only; see [10.5 For study only, and disclaimer](#105-for-study-only-and-disclaimer) for the full statement.
+
+---
+
+## ☕ Support the author
+
+If this project or the write-up helped you and you like the author's work, a small tip is very welcome — thank you!
+
+<table>
+  <tr>
+    <td align="center">
+      <img src="docs/sponsor/alipay.jpg" width="240" alt="Alipay"><br/>
+      <b>Alipay</b>
+    </td>
+    <td align="center">
+      <img src="docs/sponsor/wechat.jpg" width="240" alt="WeChat Pay"><br/>
+      <b>WeChat Pay</b>
+    </td>
+  </tr>
+</table>
