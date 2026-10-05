@@ -456,3 +456,22 @@ Windows 下记录当前所连 Wi-Fi BSSID 的小工具,零依赖(只调 `netsh w
 - **换 `ENCRYPTION_KEY` 等于清空凭据**:库里所有 refresh token 与设备号都将无法解密,全员需重新登录。
 - **安全**:超管初始密码务必在面板尽快修改;`JWT_SECRET`、`ENCRYPTION_KEY`、`.deploy.env` 不要进仓库;生产务必开 HTTPS 并把 `COOKIE_SECURE` 设为 `true`。
 - **合规与免责**:本系统替学生提交签到、以实测 BSSID 通过上游位置校验,与校规直接冲突,相关账号可能被处理。本项目仅供学习研究,完整说明见 [10.5 仅供学习与免责](#105-仅供学习与免责)。
+
+---
+
+## ☕ 打赏作者
+
+如果这个项目或这份分析对你有帮助,喜欢作者的话,欢迎打赏一杯咖啡,谢谢支持!
+
+<table>
+  <tr>
+    <td align="center">
+      <img src="docs/sponsor/alipay.jpg" width="240" alt="支付宝"><br/>
+      <b>支付宝</b>
+    </td>
+    <td align="center">
+      <img src="docs/sponsor/wechat.jpg" width="240" alt="微信支付"><br/>
+      <b>微信支付</b>
+    </td>
+  </tr>
+</table>
