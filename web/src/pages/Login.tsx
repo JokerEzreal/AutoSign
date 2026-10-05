@@ -17,10 +17,24 @@ export default function Login() {
   const [err, setErr] = useState<string>("");
   const timer = useRef<number | null>(null);
 
-  // 账号密码直登
+  // 次要入口:账号密码直登(多数账号强制 MFA 会失败,仅对未开启双重验证的账号可用)
+  const [showPassword, setShowPassword] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+
+  const startSchool = async () => {
+    setErr("");
+    setStatus("正在发起登录…");
+    try {
+      const d = await post<DeviceStart>("/api/auth/device/start");
+      setDevice(d);
+      setStatus("请在浏览器打开下方网址并输入代码完成授权…");
+    } catch (e: any) {
+      setErr(e.message);
+      setStatus("");
+    }
+  };
 
   const loginPassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,23 +49,10 @@ export default function Login() {
       await post("/api/auth/password/login", { username: username.trim(), password });
       await reload();
     } catch (e: any) {
-      setErr(e.message + "(若账号开启了双重验证,请改用下方「微软页面授权」)");
+      setErr(e.message + "(若账号开启了双重验证,请改用「微软页面授权」)");
       setStatus("");
     } finally {
       setBusy(false);
-    }
-  };
-
-  const startSchool = async () => {
-    setErr("");
-    setStatus("正在发起登录…");
-    try {
-      const d = await post<DeviceStart>("/api/auth/device/start");
-      setDevice(d);
-      setStatus("请在浏览器打开下方网址并输入代码完成授权…");
-    } catch (e: any) {
-      setErr(e.message);
-      setStatus("");
     }
   };
 
@@ -97,7 +98,24 @@ export default function Login() {
 
         {err && <div className="banner bad">{err}</div>}
 
-        {!device ? (
+        {device ? (
+          <>
+            <div className="code-box">{device.user_code}</div>
+            <p className="center muted">
+              打开{" "}
+              <a href={device.verification_uri} target="_blank" rel="noreferrer">
+                {device.verification_uri}
+              </a>
+              <br />
+              输入上方代码并用学校账号授权
+            </p>
+            <p className="center">{status}</p>
+            <div className="spacer" />
+            <button className="ghost" style={{ width: "100%" }} onClick={() => (stop(), setDevice(null), setStatus(""))}>
+              返回
+            </button>
+          </>
+        ) : showPassword ? (
           <>
             <form onSubmit={loginPassword}>
               <div className="field">
@@ -125,30 +143,20 @@ export default function Login() {
               </button>
             </form>
             {status && <p className="center muted" style={{ marginTop: 10 }}>{status}</p>}
-
             <div className="spacer" />
-            <p className="center muted" style={{ fontSize: 12 }}>
-              账号开启了双重验证(MFA)?
-            </p>
-            <button className="ghost" style={{ width: "100%" }} onClick={startSchool} disabled={busy}>
-              改用微软页面授权登录
+            <button className="ghost" style={{ width: "100%" }} onClick={() => (setShowPassword(false), setErr(""), setStatus(""))} disabled={busy}>
+              返回
             </button>
           </>
         ) : (
           <>
-            <div className="code-box">{device.user_code}</div>
-            <p className="center muted">
-              打开{" "}
-              <a href={device.verification_uri} target="_blank" rel="noreferrer">
-                {device.verification_uri}
-              </a>
-              <br />
-              输入上方代码并用学校账号授权
-            </p>
-            <p className="center">{status}</p>
+            <button style={{ width: "100%" }} onClick={startSchool}>
+              用学校账号登录
+            </button>
             <div className="spacer" />
-            <button className="ghost" style={{ width: "100%" }} onClick={() => (stop(), setDevice(null), setStatus(""))}>
-              返回账号密码登录
+            <p className="center muted" style={{ fontSize: 12 }}>其他方式</p>
+            <button className="ghost" style={{ width: "100%" }} onClick={() => (setShowPassword(true), setErr(""))}>
+              用账号密码登录(需未开启双重验证)
             </button>
           </>
         )}
