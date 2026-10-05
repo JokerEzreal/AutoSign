@@ -196,7 +196,7 @@ Note: venue BSSIDs are **not** in the APK; the allowed-BSSID list used for valid
 ├─ InstAtt_Database_Info.md          upstream Firestore public-data write-up (collection access, field meanings, sign-in request format)
 ├─ app/ + build.gradle + settings.gradle
 │                                    decompiled upstream InstAtt Android app (v1.43), for reference only
-├─ MyXposed/                         Xposed / LSPosed module (its own git repo) that hooks the upstream app on-device
+├─ MyXposed/                         Xposed / LSPosed module (own repo: JokerEzreal/InstAttPlugin) that hooks the upstream app on-device
 ├─ docker-compose.dev.yml            PostgreSQL 16 for local development
 └─ .env.example                      environment-variable template
 ```
@@ -376,7 +376,7 @@ The decompiled upstream InstAtt Android app (package `instatt.instatt`, version 
 
 ### MyXposed/
 
-A standalone Xposed / LSPosed module (with its own `.git`) that runs on a rooted phone and hooks the upstream app: it auto-taps sign-in after detecting an unlock, forges the BSSID, and forces `ignoreWifi`. It is independent of the server approach and represents an alternative "on-device" route. See `MyXposed/README.md`, `FEATURES.md`, `USAGE_GUIDE.md`.
+A standalone Xposed / LSPosed module in its own repository, [JokerEzreal/InstAttPlugin](https://github.com/JokerEzreal/InstAttPlugin), that runs on a rooted phone and hooks the upstream app: it auto-taps sign-in after detecting an unlock, forges the BSSID, and forces `ignoreWifi`. It is independent of the server approach and represents an alternative "on-device" route. See `MyXposed/README.md`, `FEATURES.md`, `USAGE_GUIDE.md`.
 
 ### InstAtt_Database_Info.md
 

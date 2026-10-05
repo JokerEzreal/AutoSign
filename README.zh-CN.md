@@ -197,7 +197,7 @@
 ├─ InstAtt_Database_Info.md          上游 Firestore 公开数据整理(集合权限、字段含义、签到请求格式)
 ├─ app/ + build.gradle + settings.gradle
 │                                    上游 InstAtt Android App(v1.43)反编译工程,仅供查阅
-├─ MyXposed/                         Xposed / LSPosed 模块(独立 git 仓库),在手机端 hook 上游 App
+├─ MyXposed/                         Xposed / LSPosed 模块(独立仓库 JokerEzreal/InstAttPlugin),在手机端 hook 上游 App
 ├─ docker-compose.dev.yml            本地开发用 PostgreSQL 16
 └─ .env.example                      环境变量模板
 ```
@@ -377,7 +377,7 @@ Windows 下记录当前所连 Wi-Fi BSSID 的小工具,零依赖(只调 `netsh w
 
 ### MyXposed/
 
-独立的 Xposed / LSPosed 模块(自带 `.git`),运行在已 root 的手机上 hook 上游 App:检测课程解锁后自动点签到、伪造 BSSID、强制 `ignoreWifi`。与服务端方案互不依赖,是另一条「端侧」实现路线。文档见 `MyXposed/README.md`、`FEATURES.md`、`USAGE_GUIDE.md`。
+独立的 Xposed / LSPosed 模块,位于独立仓库 [JokerEzreal/InstAttPlugin](https://github.com/JokerEzreal/InstAttPlugin),运行在已 root 的手机上 hook 上游 App:检测课程解锁后自动点签到、伪造 BSSID、强制 `ignoreWifi`。与服务端方案互不依赖,是另一条「端侧」实现路线。文档见 `MyXposed/README.md`、`FEATURES.md`、`USAGE_GUIDE.md`。
 
 ### InstAtt_Database_Info.md
 
