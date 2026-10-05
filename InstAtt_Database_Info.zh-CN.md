@@ -1,52 +1,50 @@
-# InstAtt Firebase Database — Public Data
+# InstAtt Firebase Database 公开信息
 
-> Language: **English** · [简体中文](InstAtt_Database_Info.zh-CN.md)
+> 语言:[English](InstAtt_Database_Info.md) · **简体中文**
 
-> Data captured: 2025-11-26 12:40 (server time)
+> 数据获取时间: 2025-11-26 12:40 (服务器时间)
 >
 > Firebase Project ID: `instatt-3c80d`
 >
 > Firestore REST API: `https://firestore.googleapis.com/v1/projects/instatt-3c80d/databases/(default)/documents/`
 
-> For context on how this data was obtained and what it implies, see section 10 of the [README](README.md).
-
 ---
 
-## Access summary
+## 访问权限总结
 
-| Collection | Access | Notes |
+| 集合 | 权限 | 说明 |
 |------|------|------|
-| `global/*` | **public read** | System configuration |
-| `rooms/*` | **public read** | Classroom configuration |
-| `ongoingClasses` | **public read** | **Live list of unlocked classes** |
-| `students/*` | auth required | Student information |
-| `modules/*` | auth required | Module information |
-| `lecturers/*` | auth required | Lecturer information |
+| `global/*` | **公开读取** | 系统配置信息 |
+| `rooms/*` | **公开读取** | 教室配置信息 |
+| `ongoingClasses` | **公开读取** | **实时解锁课程列表** |
+| `students/*` | 需要认证 | 学生信息 |
+| `modules/*` | 需要认证 | 课程模块信息 |
+| `lecturers/*` | 需要认证 | 讲师信息 |
 
 ---
 
-## 1. Global config (global)
+## 1. 全局配置 (global)
 
-### 1.1 Server time (global/time)
+### 1.1 服务器时间 (global/time)
 ```
 curl "https://firestore.googleapis.com/v1/projects/instatt-3c80d/databases/(default)/documents/global/time"
 ```
 
-| Field | Value | Notes |
+| 字段 | 值 | 说明 |
 |------|------|------|
-| serverDate | 20251126 | Server date (YYYYMMDD) |
-| serverTime | 1240 | Server time (HHMM) |
-| unixTime | 1764132001 | Unix timestamp |
+| serverDate | 20251126 | 服务器日期 (YYYYMMDD) |
+| serverTime | 1240 | 服务器时间 (HHMM) |
+| unixTime | 1764132001 | Unix时间戳 |
 
-### 1.2 SSID whitelist (global/ssidFilters)
-Wi-Fi SSIDs allowed for sign-in:
+### 1.2 SSID白名单 (global/ssidFilters)
+允许签到的WiFi SSID:
 - `eduroam` ✅
 - `unmc-guest` ✅
 - `unm-guest` ✅
 
-### 1.3 Class types (global/classType)
+### 1.3 课程类型 (global/classType)
 
-| Code | Type |
+| 代码 | 类型 |
 |------|------|
 | 0 | lecture |
 | 1 | tutorial |
@@ -62,25 +60,25 @@ Wi-Fi SSIDs allowed for sign-in:
 | 11 | presentation |
 | 12 | placement |
 
-### 1.4 Class status (global/classStatus)
+### 1.4 课程状态 (global/classStatus)
 
-| Code | Status |
+| 代码 | 状态 |
 |------|------|
 | 0 | cancelled |
 | 1 | conducted |
 | 2 | YTBC (Yet To Be Conducted) |
 
-### 1.5 Lock status (global/lockStatus)
+### 1.5 锁定状态 (global/lockStatus)
 
-| Code | Status |
+| 代码 | 状态 |
 |------|------|
 | 0 | locked |
 | 1 | unlocked |
-| ignoreWifi | false (global default) |
+| ignoreWifi | false (全局默认) |
 
-### 1.6 Privilege types (global/privilegeType)
+### 1.6 用户权限类型 (global/privilegeType)
 
-| Code | Type |
+| 代码 | 类型 |
 |------|------|
 | 0 | student |
 | 1 | lecturer |
@@ -88,9 +86,9 @@ Wi-Fi SSIDs allowed for sign-in:
 | 2 | assistant |
 | 3 | admin |
 
-### 1.7 Attendance warning thresholds (global/warningThreshold)
+### 1.7 考勤警告阈值 (global/warningThreshold)
 
-| Field | Value |
+| 字段 | 值 |
 |------|------|
 | absentThreshold | 80% |
 | firstLevelWarningAverageAttendanceRateThreshold | 81% |
@@ -99,96 +97,96 @@ Wi-Fi SSIDs allowed for sign-in:
 | floorCourseAttendanceRateThreshold | 76% |
 | secondLevelWarningCourseAttendanceRateThreshold | 74% |
 
-### 1.8 Warning status types (global/warningStatus)
+### 1.8 警告状态类型 (global/warningStatus)
 
-| Code | Type |
+| 代码 | 类型 |
 |------|------|
 | 0 | Extenuating Circumstances |
 | 1 | Absence for Consecutive Days |
 | 2 | Low Attendance |
 
-### 1.9 App version info (global/latestAppVersion)
+### 1.9 App版本信息 (global/latestAppVersion)
 
-| Platform | Version |
+| 平台 | 版本 |
 |------|------|
 | Android | 1.42 |
 | iOS | 1.2.2 |
 | iOS Store URL | itms-apps://itunes.apple.com/my/app/instatt/id1432497825?mt=8 |
 
-### 1.10 Current academic year (global/courseType)
+### 1.10 当前学年 (global/courseType)
 - courseYear: `25-26`
 
-### 1.11 Support email (global/supportEmail)
+### 1.11 支持邮箱 (global/supportEmail)
 - email: `instatt.attendance@nottingham.edu.my`
 
 ---
 
-## 2. Live unlocked classes (ongoingClasses)
+## 2. 实时解锁课程 (ongoingClasses)
 
-**This is the most important public data — it lets you monitor which classes are unlocked in real time.**
+**这是最关键的公开数据！可以实时监控哪些课程已解锁。**
 
 ```bash
 curl "https://firestore.googleapis.com/v1/projects/instatt-3c80d/databases/(default)/documents/ongoingClasses"
 ```
 
-### Snapshot of unlocked classes (2025-11-26 12:40)
+### 当前解锁课程列表 (2025-11-26 12:40)
 
-| Course code | Course name | Venue | Time | Unlocked by | Attended |
+| 课程代码 | 课程名称 | 教室 | 时间 | 解锁老师 | 已签到 |
 |----------|----------|------|------|----------|--------|
-| BUSI2152_AUM_25-26 | Management Accounting | F3A08 | 09:30-11:00 | HUNG WOAN TING | 72 |
-| BUSI4641_AUM_25-26 | Employability and Global Human Resource Management | F3B03 | 11:00-13:00 | VANITHA PONNUSAMY | 4 |
-| CIVE2047_FML_25-26 | Portfolio of Civil Engineering Studies 2 | B1C26 | 09:00-13:00 | JING YING WONG | 0 |
-| EDUC2028_AUM_25-26 | Teaching Language across the Curriculum | BA64 | 12:00-13:00 | SHARIMILA AMBROSE | 0 |
-| FNDSF017_AUM_25-26 | Programming | TCR1 | 11:00-13:00 | REGINAMARY MATTHEWS | 44 |
-| MMME1035_FML_25-26 | Engineering Design and Design Project | F1A02 | 11:00-13:00 | CHIN SEONG LIM | 0 |
+| BUSI2152_AUM_25-26 | Management Accounting | F3A08 | 09:30-11:00 | HUNG WOAN TING | 72人 |
+| BUSI4641_AUM_25-26 | Employability and Global Human Resource Management | F3B03 | 11:00-13:00 | VANITHA PONNUSAMY | 4人 |
+| CIVE2047_FML_25-26 | Portfolio of Civil Engineering Studies 2 | B1C26 | 09:00-13:00 | JING YING WONG | 0人 |
+| EDUC2028_AUM_25-26 | Teaching Language across the Curriculum | BA64 | 12:00-13:00 | SHARIMILA AMBROSE | 0人 |
+| FNDSF017_AUM_25-26 | Programming | TCR1 | 11:00-13:00 | REGINAMARY MATTHEWS | 44人 |
+| MMME1035_FML_25-26 | Engineering Design and Design Project | F1A02 | 11:00-13:00 | CHIN SEONG LIM | 0人 |
 
-### ongoingClasses document fields
+### ongoingClasses 文档字段说明
 
-| Field | Type | Notes |
+| 字段 | 类型 | 说明 |
 |------|------|------|
-| moduleKey | string | Unique class ID (format: COURSECODE_TYPE_YEAR) |
-| moduleName | string | Course name |
-| venue | string | Venue code |
-| classDate | int | Date (YYYYMMDD) |
-| startTime | int | Start time (HHMM, e.g. 930 = 09:30) |
-| endTime | int | End time |
-| classType | int | Class type (see table above) |
-| classStatus | int | Class status |
-| lockStatus | int | Lock status (1 = unlocked) |
-| attendanceType | int | Attendance type |
-| studentsAttended | int | Number of students signed in |
-| unlockUserName | string | Name of the lecturer who unlocked |
-| unlockDateTimeStamp | int | Unlock timestamp (YYYYMMDDHHMM) |
+| moduleKey | string | 课程唯一标识 (格式: COURSECODE_TYPE_YEAR) |
+| moduleName | string | 课程名称 |
+| venue | string | 教室代码 |
+| classDate | int | 日期 (YYYYMMDD) |
+| startTime | int | 开始时间 (HHMM, 如 930 = 09:30) |
+| endTime | int | 结束时间 |
+| classType | int | 课程类型 (见上表) |
+| classStatus | int | 课程状态 |
+| lockStatus | int | 锁定状态 (1=已解锁) |
+| attendanceType | int | 签到类型 |
+| studentsAttended | int | 已签到学生数 |
+| unlockUserName | string | 解锁的老师姓名 |
+| unlockDateTimeStamp | int | 解锁时间戳 (YYYYMMDDHHMM) |
 
 ---
 
-## 3. Classroom info (rooms)
+## 3. 教室信息 (rooms)
 
-### 3.1 Special rooms (ignoreWifi = true)
+### 3.1 特殊教室 (ignoreWifi = true)
 
-The following rooms require **no Wi-Fi verification** to sign in:
+以下教室**无需WiFi验证**即可签到:
 
-| Room | filterStrength | Notes |
+| 教室 | filterStrength | 说明 |
 |------|----------------|------|
-| DA05 | 3 | no Wi-Fi needed |
-| DA07 | 3 | no Wi-Fi needed |
-| NB03 | 3 | no Wi-Fi needed |
-| NOLOC | 1 | no fixed location |
-| ONLINE | 1 | online class |
+| DA05 | 3 | 无需WiFi |
+| DA07 | 3 | 无需WiFi |
+| NB03 | 3 | 无需WiFi |
+| NOLOC | 1 | 无固定地点 |
+| ONLINE | 1 | 在线课程 |
 
-### 3.2 Full room list
+### 3.2 所有教室列表
 
 ```
-query: curl "https://firestore.googleapis.com/v1/projects/instatt-3c80d/databases/(default)/documents/rooms"
+查询: curl "https://firestore.googleapis.com/v1/projects/instatt-3c80d/databases/(default)/documents/rooms"
 ```
 
-#### Building A
-| Room | filterStrength |
+#### A楼 (Building A)
+| 教室 | filterStrength |
 |------|----------------|
 | AMPTHEA | 3 |
 
-#### Building B
-| Room | filterStrength |
+#### B楼 (Building B)
+| 教室 | filterStrength |
 |------|----------------|
 | B1A24 | 3 |
 | B1A30 | 3 |
@@ -208,8 +206,8 @@ query: curl "https://firestore.googleapis.com/v1/projects/instatt-3c80d/database
 | BB01 | 3 |
 | BB80 | 3 |
 
-#### Building C
-| Room | filterStrength |
+#### C楼 (Building C)
+| 教室 | filterStrength |
 |------|----------------|
 | C1A02 | 3 |
 | C1A09 | 3 |
@@ -228,8 +226,8 @@ query: curl "https://firestore.googleapis.com/v1/projects/instatt-3c80d/database
 | CB31 | 3 |
 | CB35 | 3 |
 
-#### Building D
-| Room | filterStrength | ignoreWifi |
+#### D楼 (Building D)
+| 教室 | filterStrength | ignoreWifi |
 |------|----------------|------------|
 | DA05 | 3 | **true** |
 | DA06 | 3 | - |
@@ -246,8 +244,8 @@ query: curl "https://firestore.googleapis.com/v1/projects/instatt-3c80d/database
 | DLG04 | 3 | - |
 | DLG05 | 3 | - |
 
-#### Building E
-| Room | filterStrength |
+#### E楼 (Building E)
+| 教室 | filterStrength |
 |------|----------------|
 | EA21 | 3 |
 | EA22 | 3 |
@@ -257,8 +255,8 @@ query: curl "https://firestore.googleapis.com/v1/projects/instatt-3c80d/database
 | EA51 | 3 |
 | EA53 | 3 |
 
-#### Floor F1
-| Room | filterStrength |
+#### F1楼
+| 教室 | filterStrength |
 |------|----------------|
 | F1A02 | 3 |
 | F1A03 | 3 |
@@ -271,8 +269,8 @@ query: curl "https://firestore.googleapis.com/v1/projects/instatt-3c80d/database
 | F1A23 | 3 |
 | F1A24 | 3 |
 
-#### Floor F3
-| Room | filterStrength |
+#### F3楼
+| 教室 | filterStrength |
 |------|----------------|
 | F3A03 | 3 |
 | F3A04 | 3 |
@@ -289,8 +287,8 @@ query: curl "https://firestore.googleapis.com/v1/projects/instatt-3c80d/database
 | F3C07 | 3 |
 | F3C09 | 3 |
 
-#### Floor F4
-| Room | filterStrength |
+#### F4楼
+| 教室 | filterStrength |
 |------|----------------|
 | F4A07 | 3 |
 | F4A10 | 3 |
@@ -309,15 +307,15 @@ query: curl "https://firestore.googleapis.com/v1/projects/instatt-3c80d/database
 | F4LG10 | 3 |
 
 #### TCR (Teaching Computer Room)
-| Room | filterStrength |
+| 教室 | filterStrength |
 |------|----------------|
 | TCR1 | 3 |
 | TCR2 | 3 |
 | TCR3 | 3 |
 | TCR4 | 3 |
 
-#### Other
-| Room | filterStrength | ignoreWifi |
+#### 其他
+| 教室 | filterStrength | ignoreWifi |
 |------|----------------|------------|
 | GD14 | 3 | - |
 | GREAT-HALL | 3 | - |
@@ -338,31 +336,31 @@ query: curl "https://firestore.googleapis.com/v1/projects/instatt-3c80d/database
 
 ---
 
-## 4. API usage examples
+## 4. API使用示例
 
-### 4.1 Get server time
+### 4.1 获取服务器时间
 ```bash
 curl -s "https://firestore.googleapis.com/v1/projects/instatt-3c80d/databases/(default)/documents/global/time"
 ```
 
-### 4.2 Get all currently unlocked classes
+### 4.2 获取当前所有解锁课程
 ```bash
 curl -s "https://firestore.googleapis.com/v1/projects/instatt-3c80d/databases/(default)/documents/ongoingClasses"
 ```
 
-### 4.3 Get a specific room
+### 4.3 获取特定教室信息
 ```bash
 curl -s "https://firestore.googleapis.com/v1/projects/instatt-3c80d/databases/(default)/documents/rooms/F3C04"
 ```
 
-### 4.4 Get the SSID whitelist
+### 4.4 获取SSID白名单
 ```bash
 curl -s "https://firestore.googleapis.com/v1/projects/instatt-3c80d/databases/(default)/documents/global/ssidFilters"
 ```
 
 ---
 
-## 5. Monitoring script example (Python)
+## 5. 监控脚本示例 (Python)
 
 ```python
 import requests
@@ -391,7 +389,7 @@ def get_ongoing_classes():
     return classes
 
 def monitor_course(target_module):
-    """Monitor whether a specific course is unlocked."""
+    """监控特定课程是否解锁"""
     print(f"Monitoring for: {target_module}")
     while True:
         classes = get_ongoing_classes()
@@ -401,17 +399,17 @@ def monitor_course(target_module):
                 print(f"Time: {c['startTime']} - {c['endTime']}")
                 print(f"Teacher: {c['teacher']}")
                 return c
-        time.sleep(10)  # check every 10 seconds
+        time.sleep(10)  # 每10秒检查一次
 
-# Example
-# monitor_course("COMP")  # monitor all courses starting with COMP
+# 使用示例
+# monitor_course("COMP")  # 监控所有COMP开头的课程
 ```
 
 ---
 
-## 6. Sign-in request format (reference)
+## 6. 签到请求格式 (参考)
 
-Signing in offline directly is not possible (it requires authentication), but the request format is:
+虽然无法直接离线签到（需要认证），但签到请求格式如下:
 
 **URL**: `https://us-central1-instatt-3c80d.cloudfunctions.net/signAttendance`
 
@@ -433,27 +431,25 @@ Content-Type: application/json
         "classDate": 20251126,
         "startTime": 1400,
         "macAdd": "a0:0f:37:e0:3c:2c",
-        "studentId": "student ID",
-        "deviceUID": "device unique ID"
+        "studentId": "学生ID",
+        "deviceUID": "设备唯一ID"
     }
 }
 ```
 
-**Response codes**:
-- 200: sign-in succeeded
-- 403: device not within the classroom range (BSSID validation failed)
-- 409: device not registered
+**响应代码**:
+- 200: 签到成功
+- 403: 设备不在教室范围内 (BSSID验证失败)
+- 409: 设备未注册
 
 ---
 
-## 7. Security issues summary
+## 7. 安全漏洞总结
 
-1. **`ongoingClasses` is fully public** — anyone can view all unlocked classes in real time.
-2. **`global` config is public** — exposes system configuration, the SSID whitelist, etc.
-3. **`rooms` config is public** — exposes all classroom information, including which rooms can bypass Wi-Fi verification.
-
-> These are observations about publicly readable data; they are documented here for defensive analysis. See the hardening recommendations in section 10.4 of the [README](README.md).
+1. **`ongoingClasses`集合完全公开** - 任何人都可以实时查看所有解锁的课程
+2. **`global`配置公开** - 暴露系统配置、SSID白名单等
+3. **`rooms`配置公开** - 暴露所有教室信息，包括哪些教室可以绕过WiFi验证
 
 ---
 
-*Document generated: 2025-11-26*
+*文档生成时间: 2025-11-26*
