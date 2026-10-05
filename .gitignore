@@ -10,3 +10,9 @@ instatt_tokens.json
 
 # deploy credentials (server host/user/password)
 .deploy.env
+
+# 可直接运行的签到脚本:保留本地副本,不纳入公开仓库
+auto_sign_daemon.py
+auto_sign_daemon_en.py
+offline_sign.py
+offline_sign_en.py
