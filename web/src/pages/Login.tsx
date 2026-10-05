@@ -160,6 +160,14 @@ export default function Login() {
             </button>
           </>
         )}
+
+        <div className="spacer" />
+        <p className="center muted" style={{ fontSize: 12 }}>
+          本项目目前已开源 ·{" "}
+          <a href="https://github.com/JokerEzreal/AutoSign" target="_blank" rel="noopener noreferrer">
+            GitHub
+          </a>
+        </p>
       </div>
     </div>
   );
