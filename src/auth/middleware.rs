@@ -48,7 +48,20 @@ impl FromRequestParts<AppState> for AuthCtx {
             .and_then(|v| v.to_str().ok())
             .ok_or(StatusCode::UNAUTHORIZED)?;
         let token = parse_cookie(cookie, "session").ok_or(StatusCode::UNAUTHORIZED)?;
-        ctx_from_token(&state.jwt_secret, token).ok_or(StatusCode::UNAUTHORIZED)
+        let mut ctx = ctx_from_token(&state.jwt_secret, token).ok_or(StatusCode::UNAUTHORIZED)?;
+        // 角色以数据库当前值为准:JWT 里的角色是登录那一刻写死的,登录后被改过就会过期。
+        // 这样提权/降权立即生效,且与 /api/me 返回的角色一致(修复「提成 admin 后仍看不到账号」)。
+        if let Some(aid) = ctx.account_id {
+            if let Ok(Some(role)) =
+                sqlx::query_scalar::<_, String>("SELECT role FROM accounts WHERE id=$1")
+                    .bind(aid)
+                    .fetch_optional(&state.pool)
+                    .await
+            {
+                ctx.role = role;
+            }
+        }
+        Ok(ctx)
     }
 }
 

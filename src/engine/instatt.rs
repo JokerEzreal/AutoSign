@@ -17,6 +17,8 @@ pub const VENUE_BSSIDS: &[(&str, &str)] = &[
     ("DA08", "14:84:73:40:3d:ec"),
     ("F4C10", "34:b8:83:56:3e:2c"),
     ("F1A13", "9c:d5:7d:a5:e2:e3"),
+    ("F1A15", "a0:0f:37:e3:af:2b"),
+    ("F1A11", "a0:0f:37:e3:af:2b"), // 与 F1A15 同一 BSSID
     ("F3A04", "a0:0f:37:e1:b0:2c"),
     ("F3A08", "a0:0f:37:e1:b0:2c"),
     ("BB80", "8c:1e:80:22:e9:2c"),
@@ -27,6 +29,12 @@ pub const VENUE_BSSIDS: &[(&str, &str)] = &[
     ("F3A12", "9c:d5:7d:a5:a8:0c"),
     ("F3B06", "34:b8:83:5e:03:eb"),
     ("F4B10", "34:b8:83:56:98:0b"),
+    ("F4C06", "a0:0f:37:e0:f6:cb"),
+    ("F3C09", "a0:0f:37:e0:3c:2b"),
+    ("EA29", "14:84:73:40:53:8b"),
+    ("F4B05", "a0:0f:37:df:c3:8b"),
+    ("F1A03", "a0:0f:37:e0:57:4b"),
+    ("F3B04", "34:b8:83:5e:58:eb"),
 ];
 
 /// 不检查 WiFi 的教室(ignoreWifi=true),任意 BSSID 可签。
@@ -390,6 +398,36 @@ impl InstAttClient {
             .ok_or_else(|| anyhow::anyhow!("azure 刷新无 access_token: {res}"))
     }
 
+    /// ROPC(资源所有者密码凭据)登录:账号密码直接换 Azure access/refresh token。
+    /// 返回 (access_token, refresh_token)。失败时把 Azure 的错误首行透传(便于区分密码错误 / MFA)。
+    /// 注意:启用 MFA / 条件访问的账号会失败(ROPC 不支持交互式二次验证)。
+    pub async fn login_password(&self, username: &str, password: &str) -> anyhow::Result<(String, String)> {
+        let url = format!("{}/{}/oauth2/v2.0/token", self.login_base, AZURE_TENANT_ID);
+        let res: Value = self
+            .http
+            .post(&url)
+            .form(&[
+                ("grant_type", "password"),
+                ("client_id", AZURE_CLIENT_ID),
+                ("scope", "https://graph.microsoft.com/.default offline_access"),
+                ("username", username),
+                ("password", password),
+            ])
+            .send()
+            .await?
+            .json()
+            .await?;
+        if let Some(access) = res["access_token"].as_str() {
+            let refresh = res["refresh_token"].as_str().unwrap_or_default().to_string();
+            return Ok((access.to_string(), refresh));
+        }
+        let desc = res["error_description"]
+            .as_str()
+            .unwrap_or("账号或密码错误");
+        let first_line = desc.split(['\r', '\n']).next().unwrap_or(desc);
+        Err(anyhow::anyhow!("{first_line}"))
+    }
+
     // ---------- Firebase ----------
 
     pub async fn firebase_custom_token(&self, azure_access: &str) -> anyhow::Result<String> {
@@ -679,6 +717,9 @@ mod tests {
         assert_eq!(resolve_bssid("F3C04").as_deref(), Some("a0:0f:37:e0:3c:2c"));
         assert_eq!(resolve_bssid("online").as_deref(), Some("00:00:00:00:00:00"));
         assert_eq!(resolve_bssid("UNKNOWN"), None);
+        // 新增教室:F1A15 与 F1A11 共用同一 BSSID(大小写不敏感)
+        assert_eq!(resolve_bssid("F1A15").as_deref(), Some("a0:0f:37:e3:af:2b"));
+        assert_eq!(resolve_bssid("f1a11").as_deref(), Some("a0:0f:37:e3:af:2b"));
     }
 
     #[test]

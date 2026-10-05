@@ -89,6 +89,7 @@ pub fn router(state: AppState) -> Router {
         // 认证
         .route("/api/auth/device/start", post(auth_routes::device_start))
         .route("/api/auth/device/poll", get(auth_routes::device_poll))
+        .route("/api/auth/password/login", post(auth_routes::password_login))
         .route("/api/auth/admin/login", post(auth_routes::admin_login))
         .route("/api/auth/logout", post(auth_routes::logout))
         // 用户自己
@@ -105,6 +106,10 @@ pub fn router(state: AppState) -> Router {
         .route("/api/admin/accounts/:id/topup", post(admin::topup))
         .route("/api/admin/accounts/:id/status", patch(admin::set_status))
         .route("/api/admin/accounts/:id/records", get(admin::account_records))
+        .route("/api/admin/accounts/:id/detail", get(admin::account_detail))
+        .route("/api/admin/accounts/:id/classes", get(admin::account_classes))
+        .route("/api/admin/accounts/:id/modules", patch(admin::set_account_modules))
+        .route("/api/admin/accounts/:id/auto-sign", patch(admin::set_account_auto_sign))
         .route("/api/admin/stats", get(admin::stats))
         // 仅超管
         .route("/api/admin/accounts/:id/role", patch(admin::set_role))

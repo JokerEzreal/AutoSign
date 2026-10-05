@@ -144,6 +144,118 @@ pub async fn stats(State(st): State<AppState>, _admin: AdminCtx) -> ApiResult {
     })))
 }
 
+/// 管理员查看某账号详情:资料 + 课程清单(含课程名)+ 已启用自动签的课程。
+pub async fn account_detail(State(st): State<AppState>, _admin: AdminCtx, Path(id): Path<i64>) -> ApiResult {
+    let row: Option<(
+        String,
+        String,
+        String,
+        i64,
+        bool,
+        String,
+        String,
+        serde_json::Value,
+        serde_json::Value,
+        serde_json::Value,
+        Option<chrono::DateTime<chrono::Utc>>,
+    )> = sqlx::query_as(
+        "SELECT account_name, student_id, course, balance_cents, auto_sign, role, status,
+                my_modules, enabled_modules, module_info, last_synced_at
+         FROM accounts WHERE id=$1",
+    )
+    .bind(id)
+    .fetch_optional(&st.pool)
+    .await?;
+    let (
+        account_name,
+        student_id,
+        course,
+        balance_cents,
+        auto_sign,
+        role,
+        status,
+        my_modules,
+        enabled_modules,
+        module_info,
+        last_synced_at,
+    ) = row.ok_or_else(|| ApiError::not_found("账号不存在"))?;
+    Ok(Json(json!({
+        "id": id,
+        "account_name": account_name,
+        "student_id": student_id,
+        "course": course,
+        "balance_cents": balance_cents,
+        "auto_sign": auto_sign,
+        "role": role,
+        "status": status,
+        "modules": serde_json::from_value::<Vec<String>>(my_modules).unwrap_or_default(),
+        "enabled_modules": serde_json::from_value::<Vec<String>>(enabled_modules).unwrap_or_default(),
+        "module_info": module_info,
+        "last_synced_at": last_synced_at,
+    })))
+}
+
+/// 管理员查看某账号某天课表(课程 + 对应教室 + 解锁/签到状态)。复用 /api/me/classes 的构建逻辑。
+pub async fn account_classes(
+    State(st): State<AppState>,
+    _admin: AdminCtx,
+    Path(id): Path<i64>,
+    Query(q): Query<crate::api::classes::ClassesQuery>,
+) -> ApiResult {
+    Ok(Json(crate::api::classes::build_classes(&st, id, q.date).await?))
+}
+
+#[derive(Deserialize)]
+pub struct ModulesBody {
+    pub enabled: Vec<String>,
+}
+
+/// 管理员设置某账号「已启用自动签」的课程(必须是该账号 my_modules 的子集)。
+pub async fn set_account_modules(
+    State(st): State<AppState>,
+    _admin: AdminCtx,
+    Path(id): Path<i64>,
+    Json(b): Json<ModulesBody>,
+) -> ApiResult {
+    let my: serde_json::Value = sqlx::query_scalar("SELECT my_modules FROM accounts WHERE id=$1")
+        .bind(id)
+        .fetch_optional(&st.pool)
+        .await?
+        .ok_or_else(|| ApiError::not_found("账号不存在"))?;
+    let my: Vec<String> = serde_json::from_value(my).unwrap_or_default();
+    let enabled: Vec<String> = b.enabled.into_iter().filter(|m| my.contains(m)).collect();
+    sqlx::query("UPDATE accounts SET enabled_modules=$1, updated_at=now() WHERE id=$2")
+        .bind(serde_json::json!(enabled))
+        .bind(id)
+        .execute(&st.pool)
+        .await?;
+    Ok(Json(json!({"enabled_modules": enabled})))
+}
+
+#[derive(Deserialize)]
+pub struct AutoSignBody {
+    pub auto_sign: bool,
+}
+
+/// 管理员设置某账号的挂机总开关。
+pub async fn set_account_auto_sign(
+    State(st): State<AppState>,
+    _admin: AdminCtx,
+    Path(id): Path<i64>,
+    Json(b): Json<AutoSignBody>,
+) -> ApiResult {
+    let n = sqlx::query("UPDATE accounts SET auto_sign=$1, updated_at=now() WHERE id=$2")
+        .bind(b.auto_sign)
+        .bind(id)
+        .execute(&st.pool)
+        .await?
+        .rows_affected();
+    if n == 0 {
+        return Err(ApiError::not_found("账号不存在"));
+    }
+    Ok(Json(json!({"auto_sign": b.auto_sign})))
+}
+
 // ---------- 仅超管 ----------
 
 #[derive(Deserialize)]

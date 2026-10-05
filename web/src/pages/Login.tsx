@@ -17,6 +17,31 @@ export default function Login() {
   const [err, setErr] = useState<string>("");
   const timer = useRef<number | null>(null);
 
+  // 账号密码直登
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const loginPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!username.trim() || !password) {
+      setErr("请输入账号和密码");
+      return;
+    }
+    setErr("");
+    setBusy(true);
+    setStatus("正在登录…");
+    try {
+      await post("/api/auth/password/login", { username: username.trim(), password });
+      await reload();
+    } catch (e: any) {
+      setErr(e.message + "(若账号开启了双重验证,请改用下方「微软页面授权」)");
+      setStatus("");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const startSchool = async () => {
     setErr("");
     setStatus("正在发起登录…");
@@ -73,9 +98,42 @@ export default function Login() {
         {err && <div className="banner bad">{err}</div>}
 
         {!device ? (
-          <button style={{ width: "100%" }} onClick={startSchool}>
-            用学校账号登录
-          </button>
+          <>
+            <form onSubmit={loginPassword}>
+              <div className="field">
+                <label>学校账号</label>
+                <input
+                  placeholder="如 niubi666(可省略 @nottingham.edu.my)"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  autoFocus
+                  disabled={busy}
+                />
+              </div>
+              <div className="field">
+                <label>密码</label>
+                <input
+                  type="password"
+                  placeholder="学校账号密码"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={busy}
+                />
+              </div>
+              <button style={{ width: "100%" }} type="submit" disabled={busy}>
+                {busy ? "登录中…" : "登录"}
+              </button>
+            </form>
+            {status && <p className="center muted" style={{ marginTop: 10 }}>{status}</p>}
+
+            <div className="spacer" />
+            <p className="center muted" style={{ fontSize: 12 }}>
+              账号开启了双重验证(MFA)?
+            </p>
+            <button className="ghost" style={{ width: "100%" }} onClick={startSchool} disabled={busy}>
+              改用微软页面授权登录
+            </button>
+          </>
         ) : (
           <>
             <div className="code-box">{device.user_code}</div>
@@ -88,6 +146,10 @@ export default function Login() {
               输入上方代码并用学校账号授权
             </p>
             <p className="center">{status}</p>
+            <div className="spacer" />
+            <button className="ghost" style={{ width: "100%" }} onClick={() => (stop(), setDevice(null), setStatus(""))}>
+              返回账号密码登录
+            </button>
           </>
         )}
       </div>

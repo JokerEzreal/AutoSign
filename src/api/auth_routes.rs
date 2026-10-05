@@ -50,6 +50,31 @@ pub async fn device_poll(State(st): State<AppState>, Query(q): Query<PollQuery>)
 }
 
 #[derive(Deserialize)]
+pub struct PasswordLogin {
+    pub username: String,
+    pub password: String,
+}
+
+/// 账号密码直登(ROPC):用户填学校账号 + 密码,后台静默换 token 并建/更新账号,直接下发 session。
+/// 账号可只填前缀(如 `niubi666`),自动补 `@nottingham.edu.my`。
+pub async fn password_login(State(st): State<AppState>, Json(body): Json<PasswordLogin>) -> Result<Response, ApiError> {
+    let raw = body.username.trim();
+    if raw.is_empty() || body.password.is_empty() {
+        return Err(ApiError::bad("账号和密码不能为空"));
+    }
+    let username = if raw.contains('@') {
+        raw.to_string()
+    } else {
+        format!("{raw}@nottingham.edu.my")
+    };
+    let (account_id, role) = device::password_login(&st.pool, &st.client, &st.enc_key, &username, &body.password)
+        .await
+        .map_err(|e| ApiError::new(StatusCode::UNAUTHORIZED, format!("登录失败: {e}")))?;
+    let token = jwt::issue(&st.jwt_secret, &account_id.to_string(), &role, Utc::now().timestamp())?;
+    Ok(with_session_cookie(&token, st.cookie_secure, json!({"status": "done", "role": role})))
+}
+
+#[derive(Deserialize)]
 pub struct AdminLogin {
     pub username: String,
     pub password: String,

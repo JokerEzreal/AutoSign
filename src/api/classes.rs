@@ -88,7 +88,7 @@ pub fn derive_status(c: &StudentClass, unlocked: bool, now_hhmm: i64) -> &'stati
     }
 }
 
-/// GET /api/me/classes?date=YYYYMMDD
+/// GET /api/me/classes?date=YYYYMMDD(当前登录用户看自己的课表)
 pub async fn list_classes(
     State(st): State<AppState>,
     ctx: AuthCtx,
@@ -97,29 +97,38 @@ pub async fn list_classes(
     let id = ctx
         .account_id
         .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, "超管无个人签到账号"))?;
+    Ok(Json(build_classes(&st, id, q.date).await?))
+}
+
+/// 构建某账号某天的课程表视图(供用户自己与管理员查看复用)。
+pub async fn build_classes(
+    st: &AppState,
+    account_id: i64,
+    date_opt: Option<i64>,
+) -> Result<serde_json::Value, ApiError> {
     let (today, now_hhmm) = instatt::date_hhmm(&instatt::campus_now());
-    let date = q.date.unwrap_or(today);
+    let date = date_opt.unwrap_or(today);
     if !(19000101..=21001231).contains(&date) {
         return Err(ApiError::bad("date 须为 YYYYMMDD"));
     }
 
     let row: Option<(String, serde_json::Value)> =
         sqlx::query_as("SELECT student_id, enabled_modules FROM accounts WHERE id=$1")
-            .bind(id)
+            .bind(account_id)
             .fetch_optional(&st.pool)
             .await?;
     let (student_id, enabled) = row.ok_or_else(|| ApiError::not_found("账号不存在"))?;
     if student_id.is_empty() {
-        return Err(ApiError::bad("缺少学号,请重新登录"));
+        return Err(ApiError::bad("该账号缺少学号(未成功登录过)"));
     }
     let enabled: Vec<String> = serde_json::from_value(enabled).unwrap_or_default();
 
     let token = st
         .engine
         .tokens
-        .get_valid_id_token(id)
+        .get_valid_id_token(account_id)
         .await
-        .map_err(|e| ApiError::new(StatusCode::BAD_GATEWAY, format!("token 失效,请重新登录: {e}")))?;
+        .map_err(|e| ApiError::new(StatusCode::BAD_GATEWAY, format!("token 失效,需重新登录: {e}")))?;
     let classes = st
         .client
         .get_student_classes(&token, &student_id, date)
@@ -144,7 +153,7 @@ pub async fn list_classes(
         "SELECT module_key, start_time, result, detail, charged_cents, created_at
          FROM sign_records WHERE account_id=$1 AND class_date=$2",
     )
-    .bind(id)
+    .bind(account_id)
     .bind(date)
     .fetch_all(&st.pool)
     .await?;
@@ -194,12 +203,12 @@ pub async fn list_classes(
         })
         .collect();
 
-    Ok(Json(json!({
+    Ok(json!({
         "date": date,
         "today": today,
         "now_hhmm": now_hhmm,
         "classes": views,
-    })))
+    }))
 }
 
 #[cfg(test)]

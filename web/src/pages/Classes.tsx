@@ -9,7 +9,7 @@ interface SignInfo {
   created_at: string;
 }
 
-interface ClassView {
+export interface ClassView {
   module_key: string;
   module_code: string;
   module_name: string;
@@ -39,24 +39,24 @@ interface Resp {
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
 /** 930 → "09:30" */
-const hhmm = (t: number) => `${pad2(Math.floor(t / 100))}:${pad2(t % 100)}`;
+export const hhmm = (t: number) => `${pad2(Math.floor(t / 100))}:${pad2(t % 100)}`;
 /** 20260930 → Date(UTC 零点,仅用于日期运算) */
 const toDate = (d: number) =>
   new Date(Date.UTC(Math.floor(d / 10000), (Math.floor(d / 100) % 100) - 1, d % 100));
 const fromDate = (dt: Date) =>
   dt.getUTCFullYear() * 10000 + (dt.getUTCMonth() + 1) * 100 + dt.getUTCDate();
-const shiftDate = (d: number, n: number) => {
+export const shiftDate = (d: number, n: number) => {
   const dt = toDate(d);
   dt.setUTCDate(dt.getUTCDate() + n);
   return fromDate(dt);
 };
 const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
-const dateLabel = (d: number) =>
+export const dateLabel = (d: number) =>
   `${Math.floor(d / 10000)}-${pad2(Math.floor(d / 100) % 100)}-${pad2(d % 100)} 周${WEEKDAYS[toDate(d).getUTCDay()]}`;
 /** 202609300912 → "09:12" */
 const attendedAt = (t: number) => (t ? hhmm(t % 10000) : "");
 
-function statusBadge(c: ClassView) {
+export function statusBadge(c: ClassView) {
   switch (c.status) {
     case "attended":
       return <span className="badge good">已签到</span>;
@@ -78,7 +78,7 @@ function statusBadge(c: ClassView) {
 }
 
 /** 状态下方的补充说明 */
-function statusNote(c: ClassView): string {
+export function statusNote(c: ClassView): string {
   if (c.status === "attended") return c.attendance_time ? `官方记录 ${attendedAt(c.attendance_time)}` : "官方已记录";
   if (c.status === "unlocked") {
     const who = c.unlock_user_name ? `${c.unlock_user_name} 解锁` : "";

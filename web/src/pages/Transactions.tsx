@@ -16,6 +16,7 @@ const TYPE_LABEL: Record<string, string> = {
   sign_charge: "签到扣费",
   refund: "退款",
   adjust: "调整",
+  register_bonus: "注册赠送",
 };
 
 export default function Transactions() {

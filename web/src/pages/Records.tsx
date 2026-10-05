@@ -14,7 +14,7 @@ interface Rec {
   created_at: string;
 }
 
-function resultBadge(r: string) {
+export function resultBadge(r: string) {
   if (r === "ok_200") return <span className="badge good">成功</span>;
   if (r === "already_202") return <span className="badge muted">已签</span>;
   return <span className="badge bad">失败</span>;

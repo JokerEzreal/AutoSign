@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { get, patch, post, yuan } from "../../api";
 import { useMe } from "../../auth";
+import AccountDetail from "./AccountDetail";
 
 interface Acc {
   id: number;
@@ -20,11 +21,17 @@ export default function Accounts() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [topupFor, setTopupFor] = useState<Acc | null>(null);
+  const [detailFor, setDetailFor] = useState<Acc | null>(null);
+  const [loadErr, setLoadErr] = useState("");
 
   const load = () => {
-    get<{ accounts: Acc[] }>(`/api/admin/accounts?search=${encodeURIComponent(search)}&page=${page}`).then(
-      (d) => setRows(d.accounts)
-    );
+    setLoadErr("");
+    get<{ accounts: Acc[] }>(`/api/admin/accounts?search=${encodeURIComponent(search)}&page=${page}`)
+      .then((d) => setRows(d.accounts))
+      .catch((e) => {
+        setRows([]);
+        setLoadErr(e.message);
+      });
   };
   useEffect(load, [page]);
 
@@ -40,6 +47,7 @@ export default function Accounts() {
   return (
     <div>
       <h2 className="page-title">账号管理</h2>
+      {loadErr && <div className="banner bad">加载失败:{loadErr}</div>}
       <div className="card">
         <div className="row" style={{ marginBottom: 14 }}>
           <input
@@ -97,6 +105,9 @@ export default function Accounts() {
                 </td>
                 <td>
                   <div className="row" style={{ gap: 6 }}>
+                    <button className="ghost" onClick={() => setDetailFor(a)}>
+                      详情
+                    </button>
                     <button className="ghost" onClick={() => setTopupFor(a)}>
                       充值
                     </button>
@@ -143,6 +154,10 @@ export default function Accounts() {
             load();
           }}
         />
+      )}
+
+      {detailFor && (
+        <AccountDetail id={detailFor.id} name={detailFor.account_name} onClose={() => setDetailFor(null)} />
       )}
     </div>
   );
