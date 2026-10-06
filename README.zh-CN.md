@@ -163,7 +163,7 @@
 
 ### 2.6 信息来源:逆向 InstAtt APK
 
-上面用到的全部上游细节 —— Firebase 项目与 API key、Azure 租户/客户端 ID、各云函数名(`signAttendance`、`userLogin`、`unlock` …)、`signAttendance` 的请求字段、以及客户端如何上报所连 BSSID(`MACaddress`)与 `ignoreWifi` 处理 —— 都来自对公开发行的 InstAtt 安卓 APK(`instatt.instatt`,v1.43)的反编译,留存在本仓库 `app/` 目录。随后用从 APK 取得的配置,直接查询上游公开可读的 Firestore 集合,整理成 [`InstAtt_Database_Info.md`](InstAtt_Database_Info.zh-CN.md)。
+上面用到的全部上游细节 —— Firebase 项目与 API key、Azure 租户/客户端 ID、各云函数名(`signAttendance`、`userLogin`、`unlock` …)、`signAttendance` 的请求字段、以及客户端如何上报所连 BSSID(`MACaddress`)与 `ignoreWifi` 处理 —— 都来自对公开发行的 InstAtt 安卓 APK(`instatt.instatt`,v1.43)的反编译,留存在本地 `app/` 目录(仅供查阅,**未纳入公开仓库**)。随后用从 APK 取得的配置,直接查询上游公开可读的 Firestore 集合,整理成 [`InstAtt_Database_Info.md`](InstAtt_Database_Info.zh-CN.md)。
 
 注意:教室 BSSID **不在** APK 里;校验用的合法 BSSID 名单在服务端(存于 Firestore,但学生 token 读不到、也不在公开的 `rooms` 文档里 —— `rooms` 只有 `filterStrength` 与 `ignoreWifi`),所以只能到各教室现场用 `tools/wifi-bssid` 实测采集。该 APK 为发布版但未做任何混淆或加固,逆向门槛极低,详见 [10. 逆向来源、安全分析与加固建议](#10-逆向来源安全分析与加固建议)。
 
@@ -199,6 +199,8 @@
 ├─ docker-compose.dev.yml            本地开发用 PostgreSQL 16
 └─ .env.example                      环境变量模板
 ```
+
+> **未纳入公开仓库(仅本地):** `app/`(反编译的 APK)、其根目录 `build.gradle` / `settings.gradle`、`tools/`、`MyXposed/`(独立仓库 [InstAttPlugin](https://github.com/JokerEzreal/InstAttPlugin))、`.claude/`。公开仓库包含的是 Rust 后端(`src/`)、前端(`web/`)、`migrations/`、`deploy/`、`scripts/`、`docs/` 和各 README。详见 [本地保留、不入库的文件](#本地保留不入库的文件)。
 
 ---
 
@@ -354,7 +356,7 @@ Windows 下记录当前所连 Wi-Fi BSSID 的小工具,零依赖(只调 `netsh w
 
 ### app/(含根目录的 build.gradle / settings.gradle)
 
-上游 InstAtt Android App(包名 `instatt.instatt`,版本 1.43)的反编译工程,约 9 千个文件,用于确认上游接口字段、Firebase 配置与 Wi-Fi 校验逻辑。不参与本服务构建。
+上游 InstAtt Android App(包名 `instatt.instatt`,版本 1.43)的反编译工程,约 9 千个文件,用于确认上游接口字段、Firebase 配置与 Wi-Fi 校验逻辑。该目录仅保留在本地、**未纳入公开仓库**(避免二次分发反编译的第三方 App),也不参与本服务构建。
 
 ### MyXposed/
 
@@ -372,6 +374,8 @@ Windows 下记录当前所连 Wi-Fi BSSID 的小工具,零依赖(只调 `netsh w
 
 `.gitignore` 排除了 `.env`、`.deploy.env`(服务器口令)、`instatt_tokens.json`(真实用户 refresh token),以及服务端前身的独立 Python 脚本 `auto_sign_daemon*.py` / `offline_sign*.py`。`src/engine/instatt.rs` 就是从这两个脚本移植的。
 
+此外,下列目录也仅保留在本地、**不属于公开仓库**(已 gitignore,防止误推):`app/` —— 反编译的上游 APK(约 9 千个文件,仅供查阅、不二次分发)及其根目录 `build.gradle` / `settings.gradle`;`tools/` —— BSSID 采集器等本地工具;`MyXposed/` —— Xposed 模块,位于独立仓库 [InstAttPlugin](https://github.com/JokerEzreal/InstAttPlugin);`.claude/` —— 本地助手配置。
+
 ---
 
 ## 10. 逆向来源、安全分析与加固建议
@@ -380,7 +384,7 @@ Windows 下记录当前所连 Wi-Fi BSSID 的小工具,零依赖(只调 `netsh w
 
 ### 10.1 逆向过程
 
-1. 反编译 InstAtt 安卓 APK(`instatt.instatt`,versionName 1.43),得到可读 Java 源码,留存于 `app/`(`instatt` 包下 109 个业务类)。
+1. 反编译 InstAtt 安卓 APK(`instatt.instatt`,versionName 1.43),得到可读 Java 源码(`instatt` 包下 109 个业务类),留存于本地 `app/`、未纳入公开仓库。
 2. 从中提取客户端配置与协议:Firebase 项目/密钥、Azure 租户与客户端 ID、云函数名清单、`signAttendance` 等请求的字段结构,以及客户端上报所连 BSSID(`MACaddress`)与 `ignoreWifi` 的处理。
 3. 用这些配置直接请求上游**公开可读**的 Firestore 集合(`global/*`、`rooms/*`、`ongoingClasses`),把字段含义、编码表与签到请求格式整理成 [`InstAtt_Database_Info.md`](InstAtt_Database_Info.zh-CN.md)。
 4. 把上述逻辑用 Rust 重写为本服务的上游客户端(`src/engine/instatt.rs`)。
@@ -389,7 +393,7 @@ Windows 下记录当前所连 Wi-Fi BSSID 的小工具,零依赖(只调 `netsh w
 
 发布版(`BuildConfig.BUILD_TYPE = "release"`、`DEBUG = false`)直接反编译即得到带原始包名/类名/字段名的 Java,几乎无逆向门槛:
 
-| 观察 | 证据(本仓库 `app/`) |
+| 观察 | 证据(本地 `app/` 目录) |
 |---|---|
 | 类名、方法名、字段名全部保留,无 `a/b/c` 混淆 | `instatt` 包下 109 个有意义命名的类,如 `LecturerHomeFragment`、`WifiConnectionReceiver`、`FirebaseFunctionName` |
 | 云函数名明文硬编码 | `FirebaseFunctionName.java`:`signAttendance` / `userLogin` / `unlock` / `lock` / `createClass` / `modifyAttendanceAdmin` … |

@@ -162,7 +162,7 @@ To add a venue, collect its BSSID with `tools/wifi-bssid` and append it to `VENU
 
 ### 2.6 Where the data came from: reverse-engineering the InstAtt APK
 
-Every upstream detail used above — the Firebase project and API key, the Azure tenant/client IDs, the cloud-function names (`signAttendance`, `userLogin`, `unlock`, …), the `signAttendance` request fields, and how the client reports its connected BSSID (`MACaddress`) and handles `ignoreWifi` — came from decompiling the publicly distributed InstAtt Android APK (`instatt.instatt`, v1.43), kept in this repo under `app/`. Using the config taken from the APK, the publicly readable Firestore collections were then queried directly and written up in [`InstAtt_Database_Info.md`](InstAtt_Database_Info.md).
+Every upstream detail used above — the Firebase project and API key, the Azure tenant/client IDs, the cloud-function names (`signAttendance`, `userLogin`, `unlock`, …), the `signAttendance` request fields, and how the client reports its connected BSSID (`MACaddress`) and handles `ignoreWifi` — came from decompiling the publicly distributed InstAtt Android APK (`instatt.instatt`, v1.43), kept locally under `app/` (reference only, **not included in the public repo**). Using the config taken from the APK, the publicly readable Firestore collections were then queried directly and written up in [`InstAtt_Database_Info.md`](InstAtt_Database_Info.md).
 
 Note: venue BSSIDs are **not** in the APK; the allowed-BSSID list used for validation lives server-side (in Firestore, but not readable by a student token and not in the public `rooms` documents — `rooms` only has `filterStrength` and `ignoreWifi`), so they can only be surveyed on site with `tools/wifi-bssid`. The APK is a release build yet ships with no obfuscation or hardening at all, so the bar to reverse it is extremely low; see [10. Reverse Engineering, Security Analysis and Hardening](#10-reverse-engineering-security-analysis-and-hardening).
 
@@ -198,6 +198,8 @@ Note: venue BSSIDs are **not** in the APK; the allowed-BSSID list used for valid
 ├─ docker-compose.dev.yml            PostgreSQL 16 for local development
 └─ .env.example                      environment-variable template
 ```
+
+> **Not in the public repo (local-only):** `app/` (the decompiled APK), its root `build.gradle` / `settings.gradle`, `tools/`, `MyXposed/` (its own repo [InstAttPlugin](https://github.com/JokerEzreal/InstAttPlugin)), and `.claude/`. The published repo is the Rust backend (`src/`), the web frontend (`web/`), `migrations/`, `deploy/`, `scripts/`, `docs/`, and the READMEs. See [Files kept locally, not committed](#files-kept-locally-not-committed).
 
 ---
 
@@ -353,7 +355,7 @@ A small Windows tool that records the currently connected Wi-Fi BSSID with zero 
 
 ### app/ (with the root build.gradle / settings.gradle)
 
-The decompiled upstream InstAtt Android app (package `instatt.instatt`, version 1.43), about 9,000 files, used to confirm the upstream endpoint fields, Firebase config, and Wi-Fi checking logic. It is not part of this service's build.
+The decompiled upstream InstAtt Android app (package `instatt.instatt`, version 1.43), about 9,000 files, used to confirm the upstream endpoint fields, Firebase config, and Wi-Fi checking logic. It is kept local and **not included in the public repo** (to avoid redistributing a decompiled third-party app), and is not part of this service's build.
 
 ### MyXposed/
 
@@ -371,6 +373,8 @@ The 2026-06-05 SaaS design doc and staged implementation plan. The current state
 
 `.gitignore` excludes `.env`, `.deploy.env` (server credentials), `instatt_tokens.json` (real users' refresh tokens), and the standalone Python scripts that preceded the server (`auto_sign_daemon*.py` / `offline_sign*.py`). `src/engine/instatt.rs` was ported from those two scripts.
 
+Also kept local and **not part of the public repo** (gitignored so they cannot be pushed by accident): `app/` — the decompiled upstream APK (~9,000 files; kept for reference, not redistributed) and its root `build.gradle` / `settings.gradle`; `tools/` — the BSSID collector and local tooling; `MyXposed/` — the Xposed module, which lives in its own repo [InstAttPlugin](https://github.com/JokerEzreal/InstAttPlugin); and `.claude/` — local assistant settings.
+
 ---
 
 ## 10. Reverse Engineering, Security Analysis and Hardening
@@ -379,7 +383,7 @@ The 2026-06-05 SaaS design doc and staged implementation plan. The current state
 
 ### 10.1 How it was reverse-engineered
 
-1. Decompile the InstAtt Android APK (`instatt.instatt`, versionName 1.43) into readable Java, kept under `app/` (109 business classes in the `instatt` package).
+1. Decompile the InstAtt Android APK (`instatt.instatt`, versionName 1.43) into readable Java (109 business classes in the `instatt` package), kept locally under `app/` and not included in the public repo.
 2. Extract the client config and protocol: Firebase project/key, Azure tenant and client IDs, the cloud-function name list, the field structure of requests such as `signAttendance`, and how the client reports its connected BSSID (`MACaddress`) and handles `ignoreWifi`.
 3. Use that config to query the **publicly readable** Firestore collections directly (`global/*`, `rooms/*`, `ongoingClasses`) and write up the field meanings, code tables, and sign-in request format in [`InstAtt_Database_Info.md`](InstAtt_Database_Info.md).
 4. Reimplement the above in Rust as this service's upstream client (`src/engine/instatt.rs`).
@@ -388,7 +392,7 @@ The 2026-06-05 SaaS design doc and staged implementation plan. The current state
 
 The release build (`BuildConfig.BUILD_TYPE = "release"`, `DEBUG = false`) decompiles straight into Java with original package/class/field names, with almost no barrier to reverse:
 
-| Observation | Evidence (`app/` in this repo) |
+| Observation | Evidence (in the local `app/` tree) |
 |---|---|
 | Class, method, and field names all preserved, no `a/b/c` obfuscation | 109 meaningfully named classes in the `instatt` package, e.g. `LecturerHomeFragment`, `WifiConnectionReceiver`, `FirebaseFunctionName` |
 | Cloud-function names hard-coded in cleartext | `FirebaseFunctionName.java`: `signAttendance` / `userLogin` / `unlock` / `lock` / `createClass` / `modifyAttendanceAdmin` … |
