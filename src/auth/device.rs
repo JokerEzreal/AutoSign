@@ -131,6 +131,19 @@ pub async fn password_login(
     upsert_account(pool, enc_key, &login).await
 }
 
+/// 已拿到 Azure access/refresh token 后完成登录(供辅助登录 worker 回收 token 后复用)。
+/// 跑完整解析链 + upsert,返回 (account_id, role)。
+pub async fn finalize_from_azure_tokens(
+    pool: &PgPool,
+    client: &InstAttClient,
+    enc_key: &[u8; 32],
+    azure_access: &str,
+    azure_refresh: &str,
+) -> anyhow::Result<(i64, String)> {
+    let login = resolve_login(client, azure_access, azure_refresh).await?;
+    upsert_account(pool, enc_key, &login).await
+}
+
 /// 用 Azure access/refresh 跑完整链,拿账号名/学号/设备/课程。
 async fn resolve_login(
     client: &InstAttClient,

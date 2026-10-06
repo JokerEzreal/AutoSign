@@ -1,5 +1,6 @@
 //! 认证:JWT 会话、argon2 密码、Device Code 登录、角色中间件。
 
+pub mod assisted;
 pub mod device;
 pub mod jwt;
 pub mod middleware;

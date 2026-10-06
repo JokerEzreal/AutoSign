@@ -679,6 +679,60 @@ impl InstAttClient {
             },
         })
     }
+
+    // ---------- 设备注册(修复 deviceUID 不匹配) ----------
+
+    /// 注册设备:服务端生成并返回 tempDeviceUID。
+    /// Ok(Some(uid))=注册成功;Ok(None)=24h 内已注册过(304),暂无法再注册。
+    pub async fn register_device(&self, id_token: &str, student_id: &str) -> anyhow::Result<Option<String>> {
+        let url = format!("{}/registerDevice", self.functions_base);
+        let res: Value = self
+            .http
+            .post(&url)
+            .bearer_auth(id_token)
+            .json(&json!({"data": {"studentID": student_id}}))
+            .send()
+            .await?
+            .json()
+            .await?;
+        let result = &res["result"];
+        match result["statusCode"].as_i64().unwrap_or(0) {
+            200 => {
+                let temp = result["tempDeviceUID"].as_str().unwrap_or_default().to_string();
+                if temp.is_empty() {
+                    anyhow::bail!("registerDevice 200 但缺 tempDeviceUID: {res}");
+                }
+                Ok(Some(temp))
+            }
+            304 => Ok(None),
+            code => anyhow::bail!("registerDevice 失败 code={code}: {result}"),
+        }
+    }
+
+    /// 确认设备注册(提交 tempDeviceUID)。返回是否成功(statusCode==200)。
+    pub async fn register_device_success(
+        &self,
+        id_token: &str,
+        student_id: &str,
+        device_uid: &str,
+        result_key: &str,
+    ) -> anyhow::Result<bool> {
+        let url = format!("{}/registerDeviceSuccess", self.functions_base);
+        let res: Value = self
+            .http
+            .post(&url)
+            .bearer_auth(id_token)
+            .json(&json!({"data": {
+                "studentID": student_id,
+                "deviceUID": device_uid,
+                "resultKey": result_key,
+            }}))
+            .send()
+            .await?
+            .json()
+            .await?;
+        Ok(res["result"]["statusCode"].as_i64().unwrap_or(0) == 200)
+    }
 }
 
 /// 取 Firestore 字段的 stringValue。

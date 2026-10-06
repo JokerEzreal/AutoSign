@@ -123,13 +123,13 @@ impl TokenManager {
 
     /// 第 2 层:每日对所有 active 账号跑完整链保活长 token,失败标记 needs_relogin。
     pub async fn daily_refresh_all(&self) -> anyhow::Result<()> {
-        let ids: Vec<i64> = sqlx::query_scalar(
-            "SELECT id FROM accounts WHERE status='active'",
+        let rows: Vec<(i64, String)> = sqlx::query_as(
+            "SELECT id, student_id FROM accounts WHERE status='active'",
         )
         .fetch_all(&self.pool)
         .await?;
-        tracing::info!("每日刷新:{} 个 active 账号", ids.len());
-        for id in ids {
+        tracing::info!("每日刷新:{} 个 active 账号", rows.len());
+        for (id, student_id) in rows {
             let (_, azure_rt) = match self.load_refresh_tokens(id).await {
                 Ok(v) => v,
                 Err(_) => continue,
@@ -139,13 +139,59 @@ impl TokenManager {
                 continue;
             }
             match self.refresh_full(id, &azure_rt).await {
-                Ok(id_token) => self.store(id, id_token),
+                Ok(id_token) => {
+                    self.store(id, id_token.clone());
+                    // 顺带同步 deviceUID:非空则更新;为空则注册一次(提前避免签到时 409 不匹配)
+                    if !student_id.is_empty() {
+                        if let Err(e) = self.sync_device_uid(id, &student_id, &id_token).await {
+                            tracing::warn!("[{id}] 每日同步 deviceUID 失败: {e}");
+                        }
+                    }
+                }
                 Err(e) => {
                     tracing::warn!("[{id}] 每日刷新失败: {e}");
                     self.mark_needs_relogin(id).await;
                 }
             }
         }
+        Ok(())
+    }
+
+    /// 同步 Firestore 的 deviceUID:非空则更新落库;**仅当为空**时 registerDevice 注册一次。
+    /// (24h 内已注册过会返回 None → 跳过,不报错。)
+    async fn sync_device_uid(&self, account_id: i64, student_id: &str, id_token: &str) -> anyhow::Result<()> {
+        let fresh = self
+            .client
+            .get_student_info(id_token, student_id)
+            .await?
+            .map(|i| i.device_uid)
+            .unwrap_or_default();
+        if !fresh.is_empty() {
+            self.persist_device_uid(account_id, &fresh).await?;
+            return Ok(());
+        }
+        if let Some(temp) = self.client.register_device(id_token, student_id).await? {
+            let stamp = format!("{student_id}{}", chrono::Utc::now().timestamp());
+            if self
+                .client
+                .register_device_success(id_token, student_id, &temp, &stamp)
+                .await?
+            {
+                self.persist_device_uid(account_id, &temp).await?;
+                tracing::info!("[{account_id}] 每日同步:deviceUID 为空,已注册新设备");
+            }
+        }
+        Ok(())
+    }
+
+    /// 加密并落库 device_uid。
+    async fn persist_device_uid(&self, account_id: i64, uid: &str) -> anyhow::Result<()> {
+        let enc = crypto::encrypt_str(&self.enc_key, uid)?;
+        sqlx::query("UPDATE accounts SET device_uid=$1, last_synced_at=now(), updated_at=now() WHERE id=$2")
+            .bind(enc)
+            .bind(account_id)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 

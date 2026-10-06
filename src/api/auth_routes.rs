@@ -11,6 +11,7 @@ use serde::Deserialize;
 use serde_json::json;
 
 use super::{clear_session_cookie, with_session_cookie, ApiError, ApiResult};
+use crate::auth::assisted::{self, AssistedState};
 use crate::auth::{device, jwt, password};
 use crate::state::AppState;
 
@@ -72,6 +73,57 @@ pub async fn password_login(State(st): State<AppState>, Json(body): Json<Passwor
         .map_err(|e| ApiError::new(StatusCode::UNAUTHORIZED, format!("登录失败: {e}")))?;
     let token = jwt::issue(&st.jwt_secret, &account_id.to_string(), &role, Utc::now().timestamp())?;
     Ok(with_session_cookie(&token, st.cookie_secure, json!({"status": "done", "role": role})))
+}
+
+#[derive(Deserialize)]
+pub struct AssistedStart {
+    pub username: String,
+    #[serde(default)]
+    pub password: String,
+}
+
+/// 辅助登录(授权码 + MFA 数字匹配,后台无头浏览器代登):发起一次登录,返回 session_id。
+/// 随后前端轮询 /api/auth/assisted/poll 拿 MFA 数字并完成登录。
+pub async fn assisted_start(State(st): State<AppState>, Json(b): Json<AssistedStart>) -> ApiResult {
+    let uname = b.username.trim();
+    if uname.is_empty() {
+        return Err(ApiError::bad("请输入账号"));
+    }
+    let sid = assisted::gen_session_id();
+    assisted::start_worker(&sid, uname, &b.password)
+        .await
+        .map_err(|e| ApiError::new(StatusCode::SERVICE_UNAVAILABLE, e.to_string()))?;
+    Ok(Json(json!({ "session_id": sid })))
+}
+
+#[derive(Deserialize)]
+pub struct AssistedPoll {
+    pub id: String,
+}
+
+/// 轮询辅助登录状态。mfa:返回待输入的数字匹配号码;done:签发 session cookie;failed:返回原因。
+pub async fn assisted_poll(State(st): State<AppState>, Query(q): Query<AssistedPoll>) -> Result<Response, ApiError> {
+    match assisted::read_status(&st.enc_key, &q.id) {
+        AssistedState::Pending | AssistedState::NotFound => {
+            Ok(Json(json!({"status": "pending"})).into_response())
+        }
+        AssistedState::Mfa { number } => {
+            Ok(Json(json!({"status": "mfa", "number": number})).into_response())
+        }
+        AssistedState::Failed { error } => {
+            assisted::cleanup(&q.id);
+            Ok(Json(json!({"status": "failed", "error": error})).into_response())
+        }
+        AssistedState::Success { azure_access, azure_refresh } => {
+            let (account_id, role) =
+                device::finalize_from_azure_tokens(&st.pool, &st.client, &st.enc_key, &azure_access, &azure_refresh)
+                    .await
+                    .map_err(|e| ApiError::new(StatusCode::BAD_GATEWAY, format!("完成登录失败: {e}")))?;
+            assisted::cleanup(&q.id);
+            let token = jwt::issue(&st.jwt_secret, &account_id.to_string(), &role, Utc::now().timestamp())?;
+            Ok(with_session_cookie(&token, st.cookie_secure, json!({"status": "done", "role": role})))
+        }
+    }
 }
 
 #[derive(Deserialize)]
