@@ -1,0 +1,4 @@
+# 迁移 SQL 统一用 LF 换行:避免跨平台 CRLF/LF 差异改变文件字节,
+# 进而导致 sqlx 迁移校验和与 _sqlx_migrations 记录不一致、服务重启时 migrate 报
+# "migration was previously applied but has been modified" 而起不来。
+migrations/*.sql text eol=lf

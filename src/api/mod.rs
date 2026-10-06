@@ -90,6 +90,8 @@ pub fn router(state: AppState) -> Router {
         .route("/api/auth/device/start", post(auth_routes::device_start))
         .route("/api/auth/device/poll", get(auth_routes::device_poll))
         .route("/api/auth/password/login", post(auth_routes::password_login))
+        .route("/api/auth/assisted/start", post(auth_routes::assisted_start))
+        .route("/api/auth/assisted/poll", get(auth_routes::assisted_poll))
         .route("/api/auth/admin/login", post(auth_routes::admin_login))
         .route("/api/auth/logout", post(auth_routes::logout))
         // 用户自己

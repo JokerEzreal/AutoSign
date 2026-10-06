@@ -2,92 +2,64 @@ import { useEffect, useRef, useState } from "react";
 import { post, get } from "../api";
 import { useMe } from "../auth";
 
-interface DeviceStart {
-  session_id: number;
-  user_code: string;
-  verification_uri: string;
-  interval: number;
-  expires_in: number;
-}
+type Phase = "form" | "working";
 
 export default function Login() {
   const { reload } = useMe();
-  const [device, setDevice] = useState<DeviceStart | null>(null);
-  const [status, setStatus] = useState<string>("");
-  const [err, setErr] = useState<string>("");
-  const timer = useRef<number | null>(null);
+  const [phase, setPhase] = useState<Phase>("form");
+  const [err, setErr] = useState("");
+  const [status, setStatus] = useState("");
 
-  // 次要入口:账号密码直登(多数账号强制 MFA 会失败,仅对未开启双重验证的账号可用)
-  const [showPassword, setShowPassword] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  const startSchool = async () => {
-    setErr("");
-    setStatus("正在发起登录…");
-    try {
-      const d = await post<DeviceStart>("/api/auth/device/start");
-      setDevice(d);
-      setStatus("请在浏览器打开下方网址并输入代码完成授权…");
-    } catch (e: any) {
-      setErr(e.message);
-      setStatus("");
-    }
-  };
-
-  const loginPassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!username.trim() || !password) {
-      setErr("请输入账号和密码");
-      return;
-    }
-    setErr("");
-    setBusy(true);
-    setStatus("正在登录…");
-    try {
-      await post("/api/auth/password/login", { username: username.trim(), password });
-      await reload();
-    } catch (e: any) {
-      setErr(e.message + "(若账号开启了双重验证,请改用「微软页面授权」)");
-      setStatus("");
-    } finally {
-      setBusy(false);
-    }
-  };
+  const [mfaNumber, setMfaNumber] = useState<string | null>(null);
+  const sessionId = useRef<string | null>(null);
+  const timer = useRef<number | null>(null);
+  const deadline = useRef<number>(0);
 
   const stop = () => {
-    if (timer.current) {
-      clearInterval(timer.current);
-      timer.current = null;
+    if (timer.current) { clearInterval(timer.current); timer.current = null; }
+  };
+  useEffect(() => stop, []);
+
+  const startLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!username.trim()) { setErr("请输入学校账号"); return; }
+    setErr(""); setMfaNumber(null); setStatus("正在登录,请稍候…"); setPhase("working");
+    try {
+      const r = await post<{ session_id: string }>("/api/auth/assisted/start", {
+        username: username.trim(), password,
+      });
+      sessionId.current = r.session_id;
+      deadline.current = Date.now() + 200_000;
+      timer.current = window.setInterval(poll, 3000);
+    } catch (e: any) {
+      setErr(e.message); setPhase("form"); setStatus("");
     }
   };
 
-  useEffect(() => {
-    if (!device) return;
-    const poll = async () => {
-      try {
-        const r = await get<{ status: string }>(`/api/auth/device/poll?id=${device.session_id}`);
-        if (r.status === "done") {
-          stop();
-          await reload();
-        } else if (r.status === "expired") {
-          stop();
-          setErr("验证码已过期,请重试");
-          setDevice(null);
-        } else if (r.status === "declined") {
-          stop();
-          setErr("授权被拒绝");
-          setDevice(null);
-        }
-      } catch {
-        /* 网络抖动,继续轮询 */
+  const poll = async () => {
+    if (!sessionId.current) return;
+    if (Date.now() > deadline.current) {
+      stop(); setErr("登录超时,请重试"); setPhase("form"); setStatus(""); return;
+    }
+    try {
+      const r = await get<{ status: string; number?: string; error?: string }>(
+        `/api/auth/assisted/poll?id=${sessionId.current}`
+      );
+      if (r.status === "mfa") {
+        setMfaNumber(r.number || null); setStatus("");
+      } else if (r.status === "done") {
+        stop(); await reload();
+      } else if (r.status === "failed") {
+        stop(); setErr(r.error || "登录失败"); setPhase("form"); setStatus("");
       }
-    };
-    timer.current = window.setInterval(poll, (device.interval || 5) * 1000);
-    return stop;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [device]);
+    } catch {
+      /* 网络抖动,继续轮询 */
+    }
+  };
+
+  const cancel = () => { stop(); sessionId.current = null; setMfaNumber(null); setErr(""); setStatus(""); setPhase("form"); };
 
   return (
     <div className="login-wrap">
@@ -98,66 +70,46 @@ export default function Login() {
 
         {err && <div className="banner bad">{err}</div>}
 
-        {device ? (
-          <>
-            <div className="code-box">{device.user_code}</div>
-            <p className="center muted">
-              打开{" "}
-              <a href={device.verification_uri} target="_blank" rel="noreferrer">
-                {device.verification_uri}
-              </a>
-              <br />
-              输入上方代码并用学校账号授权
+        {phase === "form" && (
+          <form onSubmit={startLogin}>
+            <div className="field">
+              <label>学校账号</label>
+              <input
+                placeholder="如 niubi666(可省略 @nottingham.edu.my)"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="field">
+              <label>密码</label>
+              <input
+                type="password"
+                placeholder="学校账号密码"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
+            <button style={{ width: "100%" }} type="submit">登录</button>
+            <p className="center muted" style={{ fontSize: 12, marginTop: 12 }}>
+              登录后需在 Microsoft Authenticator 中批准并输入页面显示的数字
             </p>
-            <p className="center">{status}</p>
-            <div className="spacer" />
-            <button className="ghost" style={{ width: "100%" }} onClick={() => (stop(), setDevice(null), setStatus(""))}>
-              返回
-            </button>
-          </>
-        ) : showPassword ? (
+          </form>
+        )}
+
+        {phase === "working" && (
           <>
-            <form onSubmit={loginPassword}>
-              <div className="field">
-                <label>学校账号</label>
-                <input
-                  placeholder="如 niubi666(可省略 @nottingham.edu.my)"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  autoFocus
-                  disabled={busy}
-                />
-              </div>
-              <div className="field">
-                <label>密码</label>
-                <input
-                  type="password"
-                  placeholder="学校账号密码"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  disabled={busy}
-                />
-              </div>
-              <button style={{ width: "100%" }} type="submit" disabled={busy}>
-                {busy ? "登录中…" : "登录"}
-              </button>
-            </form>
-            {status && <p className="center muted" style={{ marginTop: 10 }}>{status}</p>}
+            {mfaNumber ? (
+              <>
+                <p className="center muted">打开 Microsoft Authenticator,批准登录请求并输入数字:</p>
+                <div className="code-box">{mfaNumber}</div>
+                <p className="center muted" style={{ fontSize: 13 }}>批准后会自动登录,请稍候…</p>
+              </>
+            ) : (
+              <p className="center">{status || "正在登录,请稍候…"}</p>
+            )}
             <div className="spacer" />
-            <button className="ghost" style={{ width: "100%" }} onClick={() => (setShowPassword(false), setErr(""), setStatus(""))} disabled={busy}>
-              返回
-            </button>
-          </>
-        ) : (
-          <>
-            <button style={{ width: "100%" }} onClick={startSchool}>
-              用学校账号登录
-            </button>
-            <div className="spacer" />
-            <p className="center muted" style={{ fontSize: 12 }}>其他方式</p>
-            <button className="ghost" style={{ width: "100%" }} onClick={() => (setShowPassword(true), setErr(""))}>
-              用账号密码登录(需未开启双重验证)
-            </button>
+            <button className="ghost" style={{ width: "100%" }} onClick={cancel}>取消</button>
           </>
         )}
 
