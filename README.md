@@ -2,6 +2,9 @@
 
 > Language: **English** · [简体中文](README.zh-CN.md)
 
+> [!WARNING]
+> **No longer maintained.** This project is no longer updated and the repository is archived (read-only).
+
 An automatic attendance sign-in service for **InstAtt**, the attendance system of the University of Nottingham Malaysia campus. A student signs in to this site with their school account and ticks the courses to auto-attend; the server continuously watches the upstream "currently unlocked classes" feed, and the moment a lecturer unlocks a class it calls the upstream sign-in endpoint on the student's behalf. Billing is per **successful** sign-in.
 
 - Backend: Rust (Axum + Tokio + sqlx) + PostgreSQL, a single binary that also serves the SPA
